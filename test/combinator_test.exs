@@ -52,17 +52,33 @@ defmodule CombinatorTest do
 
   describe "rep" do
     test "recognizes positive integer number of repetitions" do
-      input = State.new("vortex")
-      repetition = rep(chr("a-z"), 6)
+      input = State.new("vor7ex")
+      repetition = rep(chr("a-z"), 1)
       assert repetition.(input)
     end
 
-    test "recognizes zero number of repetitions" do
+    test "fails when minimum number of repetitions are not satisfied" do
+      input = State.new("vor7ex")
+      repetition = rep(chr("a-z"), 4)
+      assert nil == repetition.(input)
+    end
+
+    test "fails when starting string is empty and repetitions is not, with n > 0" do
+      input = State.new("")
+      repetition = rep(chr(" "), 1)
+      assert nil == repetition.(input)
+    end
+
+    test "recognizes zero repetitions" do
       input = State.new("")
       repetition = rep(chr(" "), 0)
-      require IEx
-      IEx.pry()
-      assert x = repetition.(input)
+      assert repetition.(input)
+    end
+
+    test "recognizes one repetition" do
+      input = State.new(" ")
+      repetition = rep(chr(" "), 1)
+      assert repetition.(input)
     end
   end
 

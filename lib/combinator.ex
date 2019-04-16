@@ -50,8 +50,7 @@ defmodule Combinator do
   def seq(parsers) do
     fn state ->
       result =
-        Enum.reduce(parsers, {[], state}, fn parser, acc ->
-          {acc_nodes, acc_state} = acc
+        Enum.reduce(parsers, {[], state}, fn parser, {acc_nodes, acc_state} ->
           [node, new_state] = parser.(acc_state)
           {acc_nodes ++ [node], new_state}
         end)
@@ -80,22 +79,24 @@ defmodule Combinator do
   """
   def rep(parser, n) do
     fn state ->
-      result =
-        if n == 0 do
-          {[:rep], state}
-        else
-          Enum.reduce(1..n, {[], state}, fn _, acc ->
-            {acc_nodes, acc_state} = acc
-            [node, new_state] = parser.(acc_state)
-            {acc_nodes ++ [node], new_state}
-          end)
-        end
+      {_, new_state, nodes, count} = rep_recurse(parser, state, [], 0)
 
-      {nodes, new_state} = result
-
-      if new_state do
+      if count >= n do
         [[:rep | nodes], new_state]
       end
+    end
+  end
+
+  defp rep_recurse(parser, nil, nodes, count) do
+    {parser, nil, nodes, count}
+  end
+
+  defp rep_recurse(parser, state, nodes, count) do
+    result = parser.(state)
+
+    case result do
+      [node, new_state] -> rep_recurse(parser, new_state, nodes ++ [node], count + 1)
+      nil -> {parser, state, nodes, count}
     end
   end
 
@@ -110,7 +111,7 @@ defmodule Combinator do
           parser.(state)
         end)
 
-      Enum.find(result, fn x -> x end)
+      Enum.find(result, fn x -> !is_nil(x) end)
     end
   end
 end
