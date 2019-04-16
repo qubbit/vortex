@@ -1,11 +1,11 @@
 defmodule Combinator do
   @moduledoc """
   This module provides fundamental combinators for matching and parsing
-  strings. All functions in this module return a function which takes a `State`
-  struct with the original string and an offset from where the new matching
-  should start. The return value of these inner functions is simply `nil` if no
-  match was found. When a match has been found it will return a 2-tuple `{node,
-  new_state}`.
+  strings. All public functions in this module return a function which takes a
+  `State` struct with the original string and an offset from where the new
+  matching should start. The return value of these inner functions is simply
+  `nil` if no match was found. When a match has been found it will return a
+  2-tuple `{node, new_state}`.
 
   `node` is a list where the head is the name of the combinator and the tail is
   a list of consumed substring by that combinator.
@@ -28,7 +28,8 @@ defmodule Combinator do
   end
 
   @doc """
-  Match a single character given a regex pattern
+  Attempt to match a single character against the given regex range or
+  character class
   """
   def chr(pattern) do
     fn state ->
@@ -49,13 +50,13 @@ defmodule Combinator do
   """
   def seq(parsers) do
     fn state ->
-      result =
-        Enum.reduce(parsers, {[], state}, fn parser, {acc_nodes, acc_state} ->
-          {node, new_state}= parser.(acc_state)
-          {acc_nodes ++ [node], new_state}
+      {nodes, new_state} =
+        Enum.reduce_while(parsers, {[], state}, fn parser, {acc_nodes, acc_state} ->
+          case parser.(acc_state) do
+            {node, new_state} -> {:cont, {acc_nodes ++ [node], new_state}}
+            nil -> {:halt, {acc_nodes, nil}}
+          end
         end)
-
-      {nodes, new_state} = result
 
       if new_state do
         {[:seq | nodes], new_state}
@@ -101,15 +102,20 @@ defmodule Combinator do
   end
 
   @doc """
-  Given a list of combinators if at least of them satisfies the string starting
-  at that offset it's a success, else it's a failure.
+  Given a list of combinators returns success (2-tuple) if at least one of them
+  satisfies the string starting at the given offset, else it's a failure
+  (`nil`). All the combinators passed to this function start from the same
+  offset in the string.
+
+  One way to look at this combinator is as a chain of logical disjunction:
+
+  `parser_1 ∨ parser_2 ∨ ... ∨  parser_n`
   """
   def alt(parsers) do
     fn state ->
-      result =
-        Enum.map(parsers, fn parser ->
-          parser.(state)
-        end)
+      result = Enum.map(parsers, fn parser ->
+        parser.(state)
+      end)
 
       Enum.find(result, fn x -> !is_nil(x) end)
     end

@@ -99,4 +99,21 @@ defmodule CombinatorTest do
       assert nil == alts.(input)
     end
   end
+
+  describe "combination of fundamental combinators" do
+    test "simple expression grammar" do
+      ws = rep(str(" "), 0)
+      natural_number = alt([str("0"), seq([chr("1-9"), rep(chr("0-9"), 0)])])
+      addition = seq([natural_number, ws, str("+"), ws, natural_number])
+      expression = alt([addition, natural_number])
+
+      assert expression.(State.new("05"))
+      assert expression.(State.new("50"))
+      assert expression.(State.new("050"))
+      assert expression.(State.new("5"))
+      assert expression.(State.new("5+7"))
+      assert expression.(State.new("5 + 7"))
+      assert expression.(State.new("5   +  7"))
+    end
+  end
 end
