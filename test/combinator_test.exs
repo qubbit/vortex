@@ -19,7 +19,7 @@ defmodule CombinatorTest do
       hello = str("hello")
       world = str(" world")
 
-      assert [_, new_state] = hello.(input)
+      assert {_, new_state} = hello.(input)
       assert world.(new_state)
     end
   end
@@ -37,7 +37,7 @@ defmodule CombinatorTest do
       input = State.new("7+8")
       digit = chr("0-9")
       plus = chr("+")
-      assert [_, new_state] = digit.(input)
+      assert {_, new_state} = digit.(input)
       assert plus.(new_state)
     end
   end

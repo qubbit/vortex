@@ -22,7 +22,7 @@ defmodule Combinator do
       chunk = State.peek(state, len)
 
       if chunk == string do
-        [[:str, chunk], State.read(state, len)]
+        {[:str, chunk], State.read(state, len)}
       end
     end
   end
@@ -35,7 +35,7 @@ defmodule Combinator do
       chunk = State.peek(state, 1)
 
       if chunk =~ ~r{[#{pattern}]} do
-        [[:chr, chunk], State.read(state, 1)]
+        {[:chr, chunk], State.read(state, 1)}
       end
     end
   end
@@ -51,14 +51,14 @@ defmodule Combinator do
     fn state ->
       result =
         Enum.reduce(parsers, {[], state}, fn parser, {acc_nodes, acc_state} ->
-          [node, new_state] = parser.(acc_state)
+          {node, new_state}= parser.(acc_state)
           {acc_nodes ++ [node], new_state}
         end)
 
       {nodes, new_state} = result
 
       if new_state do
-        [[:seq | nodes], new_state]
+        {[:seq | nodes], new_state}
       end
     end
   end
@@ -82,7 +82,7 @@ defmodule Combinator do
       {_, new_state, nodes, count} = rep_recurse(parser, state, [], 0)
 
       if count >= n do
-        [[:rep | nodes], new_state]
+        {[:rep | nodes], new_state}
       end
     end
   end
@@ -95,7 +95,7 @@ defmodule Combinator do
     result = parser.(state)
 
     case result do
-      [node, new_state] -> rep_recurse(parser, new_state, nodes ++ [node], count + 1)
+      {node, new_state} -> rep_recurse(parser, new_state, nodes ++ [node], count + 1)
       nil -> {parser, state, nodes, count}
     end
   end
