@@ -90,5 +90,13 @@ defmodule CombinatorTest do
       alts = alt([alpha, digit])
       assert alts.(input)
     end
+
+    test "if non match returns nil" do
+      input = State.new("hello world")
+      alpha7 = chr("a-g")
+      digit = chr("0-9")
+      alts = alt([alpha7, digit])
+      assert nil == alts.(input)
+    end
   end
 end
