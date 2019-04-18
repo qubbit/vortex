@@ -2,12 +2,22 @@ defmodule Combinator do
   @moduledoc """
   This module provides fundamental combinators for matching and parsing
   strings. All public functions in this module return a function which takes a
-  `State` struct with the original string and an offset from where the new
-  matching should start. The return value of these inner functions is simply
+  `State`, and optionally, a `label` and a `visitor` function.
+
+  `State`: struct with the original string and an offset from where the new
+  matching should start.
+
+  `label`: An identifier for this combinator. Defaults to the name of the
+  combinator function
+
+  `visitor`: A function that transforms the node created by this combinator.
+  Defaults to `nil` (no transformation is done)
+
+  Return value: An anonymous function. These anonymous functions simply return
   `nil` if no match was found. When a match has been found it will return a
   2-tuple `{nodes, new_state}`.
 
-  `nodes` is a list where the head is the name of the combinator and the tail is
+  `nodes` is a list where the head is the label of the combinator and the tail is
   a list of consumed substring by that combinator.
 
   `new_state` is the `State` struct with the original string and a new offset.
@@ -19,13 +29,13 @@ defmodule Combinator do
   Match a string and return a new `State` with the next offset
   """
   @spec str(string :: binary, visitor :: (any -> any) | nil) :: (state -> {[any], state} | nil)
-  def str(string, visitor \\ nil) do
+  def str(string, label \\ :str, visitor \\ nil) do
     fn state ->
       len = String.length(string)
       chunk = State.peek(state, len)
 
       if chunk == string do
-        {[:str, hd(apply_visitor([chunk], visitor))], State.read(state, len)}
+        {[label, hd(apply_visitor([chunk], visitor))], State.read(state, len)}
       end
     end
   end
@@ -35,12 +45,12 @@ defmodule Combinator do
   character class
   """
   @spec chr(pattern :: binary, visitor :: (any -> any) | nil) :: (state -> {[any], state} | nil)
-  def chr(pattern, visitor \\ nil) do
+  def chr(pattern, label \\ :chr, visitor \\ nil) do
     fn state ->
       chunk = State.peek(state, 1)
 
       if chunk =~ ~r{[#{pattern}]} do
-        {[:chr, hd(apply_visitor([chunk], visitor))], State.read(state, 1)}
+        {[label, hd(apply_visitor([chunk], visitor))], State.read(state, 1)}
       end
     end
   end
@@ -54,7 +64,7 @@ defmodule Combinator do
   """
   @spec seq(parsers :: [function], visitor :: (any -> any) | nil) ::
           (state -> {[any], state} | nil)
-  def seq(parsers, visitor \\ nil) do
+  def seq(parsers, label \\ :seq, visitor \\ nil) do
     fn state ->
       {nodes, new_state} =
         Enum.reduce_while(parsers, {[], state}, fn parser, {acc_nodes, acc_state} ->
@@ -65,7 +75,7 @@ defmodule Combinator do
         end)
 
       if new_state do
-        {[:seq | apply_visitor(nodes, visitor)], new_state}
+        {[label | apply_visitor(nodes, visitor)], new_state}
       end
     end
   end
@@ -86,12 +96,12 @@ defmodule Combinator do
   return `nil`.
   """
   @spec rep(parser :: function, visitor :: (any -> any) | nil) :: (state -> {[any], state} | nil)
-  def rep(parser, n, visitor \\ nil) do
+  def rep(parser, n, label \\ :rep, visitor \\ nil) do
     fn state ->
       {_, new_state, nodes, count} = rep_recurse(parser, state, [], 0)
 
       if count >= n do
-        {[:rep | apply_visitor(nodes, visitor)], new_state}
+        {[label | apply_visitor(nodes, visitor)], new_state}
       end
     end
   end
@@ -121,7 +131,7 @@ defmodule Combinator do
   """
   @spec alt(parsers :: [function], visitor :: (any -> any) | nil) ::
           (state -> {[any], state} | nil)
-  def alt(parsers, visitor \\ nil) do
+  def alt(parsers, label \\ :alt, visitor \\ nil) do
     fn state ->
       result =
         Enum.map(parsers, fn parser ->
