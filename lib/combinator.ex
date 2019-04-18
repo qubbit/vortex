@@ -133,15 +133,9 @@ defmodule Combinator do
           (state -> {[any], state} | nil)
   def alt(parsers, label \\ :alt, visitor \\ nil) do
     fn state ->
-      result =
-        Enum.map(parsers, fn parser ->
-          case parser.(state) do
-            {nodes, new_state} -> {apply_visitor(nodes, visitor), new_state}
-            _ -> nil
-          end
-        end)
-
-      Enum.find(result, fn x -> !is_nil(x) end)
+      Enum.find_value(parsers, fn parser ->
+        parser.(state)
+      end)
     end
   end
 

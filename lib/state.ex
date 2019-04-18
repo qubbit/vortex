@@ -25,12 +25,13 @@ defmodule State do
   offset` position of the input string
   """
   def read(%State{offset: o, line: l, column: c} = state, n) do
-    lines = state
-            |> peek(n)
-            |> String.split(~r/\R/)
+    lines =
+      state
+      |> peek(n)
+      |> String.split(~r/\R/)
 
     line_count = Enum.count(lines) - 1
-    column_count = Enum.at(lines, -1) |> String.length
+    column_count = Enum.at(lines, -1) |> String.length()
 
     %{state | offset: o + n, line: l + line_count, column: c + column_count}
   end
