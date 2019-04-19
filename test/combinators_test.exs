@@ -1,8 +1,8 @@
 defmodule CombinatorTest do
   use ExUnit.Case
-  import Combinator
+  import Combinators
 
-  doctest Combinator
+  doctest Combinators
 
   describe "str" do
     test "recognizes simple strings" do

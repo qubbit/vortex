@@ -1,4 +1,4 @@
-defmodule Combinator do
+defmodule Combinators do
   @moduledoc """
   This module provides fundamental combinators for matching and parsing
   strings. All public functions in this module return a function which takes a
@@ -150,4 +150,8 @@ defmodule Combinator do
   end
 
   defp apply_visitor(nodes, _), do: nodes
+end
+
+defmodule Combinators.Builtin do
+  import Combinators
 end
