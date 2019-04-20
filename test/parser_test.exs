@@ -1,8 +1,7 @@
 defmodule ParserTest do
   use ExUnit.Case
   import Parser
-
-  doctest Parser
+  import Combinators.Builtin
 
   describe "integer combinator" do
     test "parses integer" do

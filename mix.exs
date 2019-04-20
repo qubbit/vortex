@@ -37,7 +37,7 @@ defmodule Vortex.MixProject do
       maintainers: @maintainers,
       licenses: ["MIT"],
       links: %{Github: @url},
-      files: ~w(lib LICENSE mix.exs README.md)
+      files: ~w(examples lib LICENSE mix.exs README.md)
     ]
   end
 end

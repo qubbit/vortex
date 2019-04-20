@@ -26,10 +26,10 @@ defmodule Combinators do
   @type state :: %State{string: binary, offset: integer}
 
   @doc """
-  Match a string and return a new `State` with the next offset
+  Match a literal string and return a new `State` with the next offset
   """
   @spec str(string :: binary, visitor :: (any -> any) | nil) :: (state -> {[any], state} | nil)
-  def str(string, label \\ :str, visitor \\ nil) do
+  def str(string, label \\ :lit_str, visitor \\ nil) do
     fn state ->
       len = String.length(string)
       chunk = State.peek(state, len)
@@ -44,13 +44,23 @@ defmodule Combinators do
   Attempt to match a single character against the given regex range or
   character class
   """
-  @spec chr(pattern :: binary, visitor :: (any -> any) | nil) :: (state -> {[any], state} | nil)
-  def chr(pattern, label \\ :chr, visitor \\ nil) do
+  @spec char(pattern :: binary, visitor :: (any -> any) | nil) :: (state -> {[any], state} | nil)
+  def char(pattern, label \\ :char, visitor \\ nil) do
     fn state ->
       chunk = State.peek(state, 1)
 
       if chunk =~ ~r{[#{pattern}]} do
         {[label, hd(apply_visitor([chunk], visitor))], State.read(state, 1)}
+      end
+    end
+  end
+
+
+  def opt(parser, label \\ :opt, visitor \\ nil) do
+    fn state ->
+      case parser.(state) do
+        {node, new_state} -> {node, new_state}
+        _ -> {[label, []], state}
       end
     end
   end
@@ -154,4 +164,47 @@ end
 
 defmodule Combinators.Builtin do
   import Combinators
+
+  # Some operators to alleviate verbosity
+  def a <|> b when is_binary(a) and is_binary(b) do
+    alt([str(a), str(b)])
+  end
+
+  def a <|> b when is_binary(a) and is_function(b) do
+    alt([str(a), b])
+  end
+
+  def a <|> b when is_function(a) and is_binary(b) do
+    alt([a, str(b)])
+  end
+
+  def a <|> b when is_function(a) and is_function(b) do
+    alt([a, b])
+  end
+
+  def zero, do: str("0")
+  def non_zero_digit, do: char("1-9")
+  def digit, do: zero() <|> non_zero_digit()
+
+  def positive_integer do
+    seq([non_zero_digit(), digits()])
+  end
+
+  def negative_integer do
+    seq([str("-"), non_zero_digit(), digits()])
+  end
+
+  def integer do
+    alt([zero(), negative_integer(), positive_integer()])
+  end
+
+  def digits, do: rep(digit(), 1)
+
+  def ws, do: rep(char("\R"), 1)
+
+  def sep_by(separator), do: nil
+  def many1, do: nil
+  def choice, do: nil
+  def between, do: nil
+  def one_of, do: nil
 end
