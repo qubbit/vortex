@@ -40,7 +40,11 @@ defmodule State do
     line_count = Enum.count(lines) - 1
     column_count = Enum.at(lines, -1) |> String.length()
 
-    %{state | offset: o + n, line: l + line_count, column: c + column_count}
+    # A newline resets the column to the width of the trailing segment;
+    # otherwise the consumed width is added to the current column.
+    new_column = if line_count > 0, do: column_count, else: c + column_count
+
+    %{state | offset: o + n, line: l + line_count, column: new_column}
   end
 
   @doc """

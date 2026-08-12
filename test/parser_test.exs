@@ -28,20 +28,20 @@ defmodule ParserTest do
       assert is_list(nodes)
     end
 
-    test "returns {:error, _} when nothing matches at offset 0" do
+    test "returns {:error, _} when nothing matches at the start" do
       assert {:error, reason} = parse("abc", integer())
-      assert reason =~ "offset 0"
+      assert reason =~ "line 1, column 1"
     end
 
     test "returns {:error, _} on a partial (non-consuming) parse" do
       assert {:error, reason} = parse("123rest", integer())
-      assert reason =~ "unexpected input"
-      assert reason =~ "offset 3"
+      assert reason =~ "line 1, column 4"
+      assert reason =~ "[1-9]"
     end
 
-    test "reports the offset where a partial parse stopped" do
+    test "reports the position where a partial parse stopped" do
       assert {:error, reason} = parse("-42tail", integer())
-      assert reason =~ "offset 3"
+      assert reason =~ "line 1, column 4"
     end
   end
 end

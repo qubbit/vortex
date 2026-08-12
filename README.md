@@ -38,6 +38,20 @@ being built:
 def parens, do: seq([str("("), opt(lazy(&parens/0)), str(")")])
 ```
 
+Other primitives include `eof` (assert end of input), `followed_by` /
+`not_followed_by` (positive / negative lookahead), and `count` / `rep_range`
+(exact and bounded repetition).
+
+### Error messages
+
+When a parse fails, `Parser.parse/2` reports the furthest position it reached
+and what was expected there, with a line and column:
+
+```elixir
+Parser.parse("goodbye", str("hello"))
+#=> {:error, ~s(line 1, column 1: expected "hello")}
+```
+
 ## LISP parser
 
 `LispParser.parse/1` reads one or more top-level forms into a compact AST;

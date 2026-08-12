@@ -36,6 +36,8 @@ defmodule Combinators do
 
       if chunk == string do
         {[label, hd(apply_visitor([chunk], visitor))], State.read(state, len)}
+      else
+        Combinators.Failure.record(state, ~s("#{string}"))
       end
     end
   end
@@ -51,6 +53,8 @@ defmodule Combinators do
 
       if chunk =~ ~r{[#{pattern}]} do
         {[label, hd(apply_visitor([chunk], visitor))], State.read(state, 1)}
+      else
+        Combinators.Failure.record(state, "a character in [#{pattern}]")
       end
     end
   end
@@ -66,6 +70,51 @@ defmodule Combinators do
 
       if chunk != "" do
         {[label, chunk], State.read(state, 1)}
+      else
+        Combinators.Failure.record(state, "any character")
+      end
+    end
+  end
+
+  @doc """
+  Succeed (consuming nothing) only at the end of the input. Combine it with a
+  grammar to require that the whole string is consumed.
+  """
+  @spec eof(label :: atom) :: (state -> {[any], state} | nil)
+  def eof(label \\ :eof) do
+    fn state ->
+      if State.complete?(state) do
+        {[label, []], state}
+      else
+        Combinators.Failure.record(state, "end of input")
+      end
+    end
+  end
+
+  @doc """
+  Positive lookahead: succeed, consuming no input, when `parser` would match at
+  the current position. Fails otherwise.
+  """
+  @spec followed_by(parser :: function) :: (state -> {[any], state} | nil)
+  def followed_by(parser) do
+    fn state ->
+      case parser.(state) do
+        {_nodes, _new_state} -> {[:followed_by, []], state}
+        nil -> nil
+      end
+    end
+  end
+
+  @doc """
+  Negative lookahead: succeed, consuming no input, when `parser` would **not**
+  match at the current position. Fails otherwise.
+  """
+  @spec not_followed_by(parser :: function) :: (state -> {[any], state} | nil)
+  def not_followed_by(parser) do
+    fn state ->
+      case parser.(state) do
+        nil -> {[:not_followed_by, []], state}
+        {_nodes, _new_state} -> Combinators.Failure.record(state, "a negative lookahead to fail")
       end
     end
   end
@@ -303,6 +352,8 @@ defmodule Combinators.Builtin do
 
       if c != "" and String.contains?(chars, c) do
         {[:one_of, c], State.read(state, 1)}
+      else
+        Combinators.Failure.record(state, ~s(one of "#{chars}"))
       end
     end
   end
@@ -317,7 +368,57 @@ defmodule Combinators.Builtin do
 
       if c != "" and not String.contains?(chars, c) do
         {[:none_of, c], State.read(state, 1)}
+      else
+        Combinators.Failure.record(state, ~s(a character other than "#{chars}"))
       end
+    end
+  end
+
+  @doc """
+  Match `parser` exactly `n` times. Fails if fewer than `n` matches are found.
+  """
+  def count(n, parser) when is_integer(n) and n >= 0 do
+    fn state ->
+      result =
+        Enum.reduce_while(1..n//1, {[], state}, fn _i, {nodes, st} ->
+          case parser.(st) do
+            {node, st2} -> {:cont, {nodes ++ [node], st2}}
+            nil -> {:halt, :fail}
+          end
+        end)
+
+      case result do
+        :fail -> nil
+        {nodes, st} -> {[:count | nodes], st}
+      end
+    end
+  end
+
+  @doc """
+  Match `parser` greedily between `min` and `max` times (inclusive). Fails if
+  fewer than `min` matches are found; stops after `max`.
+  """
+  def rep_range(parser, min, max)
+      when is_integer(min) and is_integer(max) and min >= 0 and max >= min do
+    fn state ->
+      {nodes, st, matched} = rep_range_collect(parser, state, [], 0, max)
+
+      if matched >= min do
+        {[:rep_range | nodes], st}
+      else
+        Combinators.Failure.record(state, "at least #{min} repetition(s)")
+      end
+    end
+  end
+
+  defp rep_range_collect(_parser, state, nodes, count, max) when count >= max do
+    {nodes, state, count}
+  end
+
+  defp rep_range_collect(parser, state, nodes, count, max) do
+    case parser.(state) do
+      {node, st2} -> rep_range_collect(parser, st2, nodes ++ [node], count + 1, max)
+      nil -> {nodes, state, count}
     end
   end
 end
