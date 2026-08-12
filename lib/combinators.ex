@@ -264,6 +264,26 @@ defmodule Combinators do
     end
   end
 
+  @doc """
+  Replace `parser`'s node with the exact substring it consumed. Handy for
+  turning a structured match (a number, an identifier) back into raw text
+  before converting it to a value.
+  """
+  @spec text(parser :: function) :: (state -> {binary, state} | nil)
+  def text(parser) do
+    fn state ->
+      case parser.(state) do
+        {node, new_state} -> {collect_text(node), new_state}
+        _ -> nil
+      end
+    end
+  end
+
+  @doc false
+  def collect_text(binary) when is_binary(binary), do: binary
+  def collect_text(list) when is_list(list), do: list |> Enum.map(&collect_text/1) |> Enum.join()
+  def collect_text(_other), do: ""
+
   defp apply_visitor(nodes, visitor) when is_function(visitor) do
     Enum.map(nodes, visitor)
   end
@@ -428,6 +448,67 @@ defmodule Combinators.Builtin do
     case parser.(state) do
       {node, st2} -> rep_range_collect(parser, st2, [node | nodes], count + 1, max)
       nil -> {nodes, state, count}
+    end
+  end
+
+  @doc """
+  Parse one or more `operand`s separated by `operator`, folding **left**.
+
+  Unlike the tree-building combinators, `operand` is expected to yield a value
+  and `operator` a two-argument function that combines the accumulated
+  left-hand value with the next operand. This is the classic way to parse a
+  left-associative infix operator (`1 - 2 - 3` == `(1 - 2) - 3`) without
+  left recursion.
+  """
+  def chainl1(operand, operator) do
+    fn state ->
+      case operand.(state) do
+        {left, st} -> chainl1_loop(left, operand, operator, st)
+        nil -> nil
+      end
+    end
+  end
+
+  defp chainl1_loop(left, operand, operator, state) do
+    case operator.(state) do
+      {op_fun, st1} ->
+        case operand.(st1) do
+          {right, st2} -> chainl1_loop(op_fun.(left, right), operand, operator, st2)
+          nil -> {left, state}
+        end
+
+      nil ->
+        {left, state}
+    end
+  end
+
+  @doc """
+  Parse one or more `operand`s separated by `operator`, folding **right**
+  (`2 ^ 3 ^ 2` == `2 ^ (3 ^ 2)`). Same operand/operator value convention as
+  `chainl1/2`.
+  """
+  def chainr1(operand, operator) do
+    fn state ->
+      chainr1_parse(operand, operator, state)
+    end
+  end
+
+  defp chainr1_parse(operand, operator, state) do
+    case operand.(state) do
+      {left, st1} ->
+        case operator.(st1) do
+          {op_fun, st2} ->
+            case chainr1_parse(operand, operator, st2) do
+              {right, st3} -> {op_fun.(left, right), st3}
+              nil -> nil
+            end
+
+          nil ->
+            {left, st1}
+        end
+
+      nil ->
+        nil
     end
   end
 end
