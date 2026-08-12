@@ -122,6 +122,25 @@ defmodule LispParserTest do
     end
   end
 
+  describe "quasiquote" do
+    test "parses quasiquote" do
+      assert {:ok, [{:quasiquote, {:symbol, "x"}}]} = LispParser.parse("`x")
+    end
+
+    test "parses unquote inside quasiquote" do
+      assert {:ok, [{:quasiquote, {:list, [{:symbol, "a"}, {:unquote, {:symbol, "b"}}]}}]} =
+               LispParser.parse("`(a ,b)")
+    end
+
+    test "parses unquote-splicing and distinguishes it from unquote" do
+      assert {:ok, [{:quasiquote, {:list, [{:unquote_splicing, {:symbol, "xs"}}]}}]} =
+               LispParser.parse("`(,@xs)")
+
+      assert {:ok, [{:quasiquote, {:list, [{:unquote, {:symbol, "x"}}]}}]} =
+               LispParser.parse("`(,x)")
+    end
+  end
+
   describe "programs with multiple top-level forms" do
     test "parses several forms in a row" do
       assert {:ok, [{:number, 1}, {:number, 2}, {:number, 3}]} = LispParser.parse("1 2 3")
