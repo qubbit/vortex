@@ -48,13 +48,18 @@ defmodule Combinators do
   """
   @spec char(pattern :: binary, visitor :: (any -> any) | nil) :: (state -> {[any], state} | nil)
   def char(pattern, label \\ :char, visitor \\ nil) do
+    # Compile the character-class regex once, when the combinator is built,
+    # rather than on every character it is asked to match.
+    regex = Regex.compile!("[#{pattern}]")
+    expected = "a character in [#{pattern}]"
+
     fn state ->
       chunk = State.peek(state, 1)
 
-      if chunk =~ ~r{[#{pattern}]} do
+      if chunk =~ regex do
         {[label, hd(apply_visitor([chunk], visitor))], State.read(state, 1)}
       else
-        Combinators.Failure.record(state, "a character in [#{pattern}]")
+        Combinators.Failure.record(state, expected)
       end
     end
   end
@@ -145,16 +150,18 @@ defmodule Combinators do
           (state -> {[any], state} | nil)
   def seq(parsers, label \\ :seq, visitor \\ nil) do
     fn state ->
+      # Accumulate nodes by prepending (O(1)) and reverse once at the end,
+      # instead of appending to the tail (O(n) per step, O(n^2) overall).
       {nodes, new_state} =
         Enum.reduce_while(parsers, {[], state}, fn parser, {acc_nodes, acc_state} ->
           case parser.(acc_state) do
-            {node, new_state} -> {:cont, {acc_nodes ++ [node], new_state}}
+            {node, new_state} -> {:cont, {[node | acc_nodes], new_state}}
             nil -> {:halt, {acc_nodes, nil}}
           end
         end)
 
       if new_state do
-        {[label | apply_visitor(nodes, visitor)], new_state}
+        {[label | apply_visitor(Enum.reverse(nodes), visitor)], new_state}
       end
     end
   end
@@ -177,10 +184,12 @@ defmodule Combinators do
   @spec rep(parser :: function, visitor :: (any -> any) | nil) :: (state -> {[any], state} | nil)
   def rep(parser, n, label \\ :rep, visitor \\ nil) do
     fn state ->
+      # `rep_recurse` collects nodes in reverse (prepending is O(1)); reverse
+      # once here so the overall cost is linear rather than quadratic.
       {_, new_state, nodes, count} = rep_recurse(parser, state, [], 0)
 
       if count >= n do
-        {[label | apply_visitor(nodes, visitor)], new_state}
+        {[label | apply_visitor(Enum.reverse(nodes), visitor)], new_state}
       end
     end
   end
@@ -193,7 +202,7 @@ defmodule Combinators do
     result = parser.(state)
 
     case result do
-      {node, new_state} -> rep_recurse(parser, new_state, nodes ++ [node], count + 1)
+      {node, new_state} -> rep_recurse(parser, new_state, [node | nodes], count + 1)
       nil -> {parser, state, nodes, count}
     end
   end
@@ -382,14 +391,14 @@ defmodule Combinators.Builtin do
       result =
         Enum.reduce_while(1..n//1, {[], state}, fn _i, {nodes, st} ->
           case parser.(st) do
-            {node, st2} -> {:cont, {nodes ++ [node], st2}}
+            {node, st2} -> {:cont, {[node | nodes], st2}}
             nil -> {:halt, :fail}
           end
         end)
 
       case result do
         :fail -> nil
-        {nodes, st} -> {[:count | nodes], st}
+        {nodes, st} -> {[:count | Enum.reverse(nodes)], st}
       end
     end
   end
@@ -404,7 +413,7 @@ defmodule Combinators.Builtin do
       {nodes, st, matched} = rep_range_collect(parser, state, [], 0, max)
 
       if matched >= min do
-        {[:rep_range | nodes], st}
+        {[:rep_range | Enum.reverse(nodes)], st}
       else
         Combinators.Failure.record(state, "at least #{min} repetition(s)")
       end
@@ -417,7 +426,7 @@ defmodule Combinators.Builtin do
 
   defp rep_range_collect(parser, state, nodes, count, max) do
     case parser.(state) do
-      {node, st2} -> rep_range_collect(parser, st2, nodes ++ [node], count + 1, max)
+      {node, st2} -> rep_range_collect(parser, st2, [node | nodes], count + 1, max)
       nil -> {nodes, state, count}
     end
   end

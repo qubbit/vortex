@@ -91,9 +91,14 @@ functions and classic recursive algorithms) live in [`examples/`](examples).
 ## Development
 
 ```
-mix test          # run the suite
-mix docs          # build documentation (requires ex_doc)
+mix test               # run the suite
+mix docs               # build documentation (requires ex_doc)
+mix run bench/bench.exs # rough combinator benchmarks
 ```
+
+Parsing is linear in the length of the input: the `State` carries the
+unconsumed suffix so position access is O(1) amortized, and `seq`/`rep` build
+their result lists without quadratic appends.
 
 ## Attributions
 
