@@ -42,6 +42,40 @@ Other primitives include `eof` (assert end of input), `followed_by` /
 `not_followed_by` (positive / negative lookahead), and `count` / `rep_range`
 (exact and bounded repetition).
 
+### Operators
+
+`Combinators.Builtin` also provides infix operators inspired by Parsec. Each is
+just sugar for a named function, so both spellings work and mix freely:
+
+| Operator | Function | Meaning (Parsec) |
+| --- | --- | --- |
+| `a <\|> b` | `alt/1` (a.k.a. `choice/1`) | ordered choice (`<\|>`) |
+| `p ~> f` | `map/2` | transform the result (`<$>`) |
+| `a ~>> b` | `keep_right/2` | sequence, keep the right (`*>`) |
+| `a <<~ b` | `keep_left/2` | sequence, keep the left (`<*`) |
+
+```elixir
+import Combinators
+import Combinators.Builtin
+
+number = text(seq([digits()])) ~> &String.to_integer/1
+atom   = number <|> symbol() <|> string_lit()
+paren  = str("(") ~>> expr() <<~ str(")")    # keep only the inner expr
+```
+
+`label/2` attaches a friendly name for error messages — the equivalent of
+Parsec's `<?>` (which can't be an Elixir operator):
+
+```elixir
+Parser.parse("!", label(digits(), "a number"))
+#=> {:error, "line 1, column 1: expected a number"}
+```
+
+Parsec's applicative operators (`<$>`, `<*>`, `<?>`) aren't valid Elixir
+tokens, so those live as the functions above. The four operators that do exist
+share one precedence level and are left-associative, so `a <\|> b ~> f` means
+`(a <\|> b) ~> f` — parenthesise when you mean otherwise.
+
 ### Error messages
 
 When a parse fails, `Parser.parse/2` reports the furthest position it reached

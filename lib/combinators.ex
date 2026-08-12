@@ -284,6 +284,42 @@ defmodule Combinators do
   def collect_text(list) when is_list(list), do: list |> Enum.map(&collect_text/1) |> Enum.join()
   def collect_text(_other), do: ""
 
+  @doc """
+  Give `parser` a human-readable `name` for error messages. If it fails without
+  consuming input, the reported expectation becomes just `name` instead of the
+  underlying low-level tokens — the equivalent of Parsec's `<?>`.
+
+      Parser.parse("!", label(digits(), "a number"))
+      #=> {:error, "line 1, column 1: expected a number"}
+  """
+  @spec label(parser :: function, name :: binary) :: (state -> {[any], state} | nil)
+  def label(parser, name) do
+    fn state ->
+      case parser.(state) do
+        {_node, _new_state} = ok -> ok
+        nil -> Combinators.Failure.relabel(state, name)
+      end
+    end
+  end
+
+  @doc """
+  Run `left` then `right`, keeping only `left`'s node (Parsec's `<*`). Both must
+  match.
+  """
+  @spec keep_left(function, function) :: (state -> {[any], state} | nil)
+  def keep_left(left, right) do
+    map(seq([left, right]), fn [_seq, kept, _dropped] -> kept end)
+  end
+
+  @doc """
+  Run `left` then `right`, keeping only `right`'s node (Parsec's `*>`). Both
+  must match.
+  """
+  @spec keep_right(function, function) :: (state -> {[any], state} | nil)
+  def keep_right(left, right) do
+    map(seq([left, right]), fn [_seq, _dropped, kept] -> kept end)
+  end
+
   defp apply_visitor(nodes, visitor) when is_function(visitor) do
     Enum.map(nodes, visitor)
   end
@@ -292,9 +328,35 @@ defmodule Combinators do
 end
 
 defmodule Combinators.Builtin do
+  @moduledoc """
+  Derived combinators, lexical helpers, and infix operators layered on top of
+  `Combinators`.
+
+  ## Operators
+
+  Each operator is only sugar for a named function, so both spellings work and
+  you can mix them freely:
+
+  | Operator | Function | Meaning (Parsec analogue) |
+  | --- | --- | --- |
+  | `a <\|> b` | `Combinators.alt/1` / `choice/1` | ordered choice (`<\|>`) |
+  | `p ~> f` | `Combinators.map/2` | transform the result (`<$>`) |
+  | `a ~>> b` | `Combinators.keep_right/2` | sequence, keep the right (`*>`) |
+  | `a <<~ b` | `Combinators.keep_left/2` | sequence, keep the left (`<*`) |
+
+  Parsec's `<?>` (label) and `<$>`/`<*>` are not valid Elixir operators, so use
+  the `Combinators.label/2`, `map/2`, `keep_left/2` and `keep_right/2`
+  functions for those.
+
+  Note: all four operators share **one** precedence level and are
+  left-associative in Elixir (unlike Haskell, where `<$>` binds tighter than
+  `<|>`). So `a <|> b ~> f` parses as `(a <|> b) ~> f`; parenthesise when you
+  mean otherwise, e.g. `a <|> (b ~> f)`.
+  """
   import Combinators
 
-  # Some operators to alleviate verbosity
+  # `<|>` — ordered choice, an alias for `Combinators.alt/1`. Bare strings are
+  # lifted with `str/1` for convenience.
   def a <|> b when is_binary(a) and is_binary(b) do
     alt([str(a), str(b)])
   end
@@ -310,6 +372,18 @@ defmodule Combinators.Builtin do
   def a <|> b when is_function(a) and is_function(b) do
     alt([a, b])
   end
+
+  @doc "Infix alias for `Combinators.map/2`: `parser ~> fun`."
+  def parser ~> fun when is_function(parser) and is_function(fun), do: map(parser, fun)
+
+  @doc "Infix alias for `Combinators.keep_right/2`: run both, keep the right result."
+  def left ~>> right when is_function(left) and is_function(right), do: keep_right(left, right)
+
+  @doc "Infix alias for `Combinators.keep_left/2`: run both, keep the left result."
+  def left <<~ right when is_function(left) and is_function(right), do: keep_left(left, right)
+
+  @doc "Alias for `Combinators.opt/1`."
+  def optional(parser), do: opt(parser)
 
   def zero, do: str("0")
   def non_zero_digit, do: char("1-9")
