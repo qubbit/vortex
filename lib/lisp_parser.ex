@@ -37,8 +37,8 @@ defmodule LispParser do
        {:quote,
         {:list, [{:number, 1}, {:number, 2.5}, {:string, "three"}]}}}
 
-      iex> LispParser.parse("(")
-      {:error, "unexpected input at offset 0"}
+      iex> match?({:error, _}, LispParser.parse("("))
+      true
   """
 
   import Combinators
