@@ -55,8 +55,28 @@ defmodule Combinators do
     end
   end
 
+  @doc """
+  Match any single character. Fails (returns `nil`) only at the end of the
+  input where there is nothing left to consume.
+  """
+  @spec any(label :: atom) :: (state -> {[any], state} | nil)
+  def any(label \\ :any) do
+    fn state ->
+      chunk = State.peek(state, 1)
 
-  def opt(parser, label \\ :opt, visitor \\ nil) do
+      if chunk != "" do
+        {[label, chunk], State.read(state, 1)}
+      end
+    end
+  end
+
+  @doc """
+  Make `parser` optional. On a match the inner node is returned untouched; when
+  it fails an empty node `[label, []]` is returned and no input is consumed, so
+  an `opt` combinator never fails.
+  """
+  @spec opt(parser :: function, label :: atom) :: (state -> {[any], state})
+  def opt(parser, label \\ :opt) do
     fn state ->
       case parser.(state) do
         {node, new_state} -> {node, new_state}
@@ -139,9 +159,8 @@ defmodule Combinators do
 
   `parser_1 ∨ parser_2 ∨ ... ∨  parser_n`
   """
-  @spec alt(parsers :: [function], visitor :: (any -> any) | nil) ::
-          (state -> {[any], state} | nil)
-  def alt(parsers, label \\ :alt, visitor \\ nil) do
+  @spec alt(parsers :: [function]) :: (state -> {[any], state} | nil)
+  def alt(parsers) do
     fn state ->
       Enum.find_value(parsers, fn parser ->
         parser.(state)
@@ -149,9 +168,41 @@ defmodule Combinators do
     end
   end
 
+  @doc """
+  Reference a parser by the name of a zero-arity function on this module. The
+  parser is looked up and built lazily, which lets grammars refer to rules that
+  are defined later or that refer back to themselves.
+  """
   def ref(name) do
     fn state ->
       apply(__MODULE__, name, [state])
+    end
+  end
+
+  @doc """
+  Defer building a parser until it is applied to a `State`. Wrap self- or
+  mutually-recursive rules in `lazy/1` so the parser tree is only expanded on
+  demand instead of looping forever while it is being constructed.
+
+      lazy(fn -> expression() end)
+  """
+  @spec lazy((-> function)) :: (state -> {[any], state} | nil)
+  def lazy(fun) do
+    fn state -> fun.().(state) end
+  end
+
+  @doc """
+  Transform the node produced by `parser` with `fun`. When `parser` fails the
+  failure is propagated unchanged, otherwise `fun` is applied to the node and
+  the same `new_state` is returned.
+  """
+  @spec map(parser :: function, fun :: (any -> any)) :: (state -> {[any], state} | nil)
+  def map(parser, fun) do
+    fn state ->
+      case parser.(state) do
+        {node, new_state} -> {fun.(node), new_state}
+        _ -> nil
+      end
     end
   end
 
@@ -187,11 +238,11 @@ defmodule Combinators.Builtin do
   def digit, do: zero() <|> non_zero_digit()
 
   def positive_integer do
-    seq([non_zero_digit(), digits()])
+    seq([non_zero_digit(), rep(digit(), 0)])
   end
 
   def negative_integer do
-    seq([str("-"), non_zero_digit(), digits()])
+    seq([str("-"), non_zero_digit(), rep(digit(), 0)])
   end
 
   def integer do
@@ -202,9 +253,71 @@ defmodule Combinators.Builtin do
 
   def ws, do: rep(char("\R"), 1)
 
-  def sep_by(separator), do: nil
-  def many1, do: nil
-  def choice, do: nil
-  def between, do: nil
-  def one_of, do: nil
+  @doc """
+  Match `parser` zero or more times, greedily. Always succeeds.
+  """
+  def many(parser), do: rep(parser, 0)
+
+  @doc """
+  Match `parser` one or more times, greedily. Fails if there is not at least
+  one match.
+  """
+  def many1(parser), do: rep(parser, 1)
+
+  @doc """
+  Alias for `Combinators.alt/1`: succeed with the first parser in `parsers`
+  that matches.
+  """
+  def choice(parsers), do: alt(parsers)
+
+  @doc """
+  Match `parser` wrapped between `open` and `close`. All three must match for
+  the sequence to succeed.
+  """
+  def between(open, close, parser), do: seq([open, parser, close])
+
+  @doc """
+  Match one or more occurrences of `parser` separated by `separator`, e.g. the
+  comma-separated arguments of a call. The separators are kept in the resulting
+  node list.
+  """
+  def sep_by1(parser, separator) do
+    seq([parser, rep(seq([separator, parser]), 0)])
+  end
+
+  @doc """
+  Like `sep_by1/2`, but also succeeds (consuming nothing) when there are zero
+  occurrences of `parser`.
+  """
+  def sep_by(parser, separator) do
+    opt(sep_by1(parser, separator))
+  end
+
+  @doc """
+  Match a single character that appears anywhere in `chars`. Fails at the end of
+  the input or when the next character is not in the set.
+  """
+  def one_of(chars) when is_binary(chars) do
+    fn state ->
+      c = State.peek(state, 1)
+
+      if c != "" and String.contains?(chars, c) do
+        {[:one_of, c], State.read(state, 1)}
+      end
+    end
+  end
+
+  @doc """
+  Match a single character that does **not** appear in `chars`. Fails at the end
+  of the input or when the next character is in the set.
+  """
+  def none_of(chars) when is_binary(chars) do
+    fn state ->
+      c = State.peek(state, 1)
+
+      if c != "" and not String.contains?(chars, c) do
+        {[:none_of, c], State.read(state, 1)}
+      end
+    end
+  end
 end
