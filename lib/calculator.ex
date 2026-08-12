@@ -31,7 +31,7 @@ defmodule Calculator do
   """
 
   import Combinators
-  import Combinators.Builtin, only: [chainl1: 2, one_of: 1]
+  import Combinators.Builtin, only: [chainl1: 2, one_of: 1, "<|>": 2, "~>": 2]
 
   @doc """
   Parse and evaluate `source`, returning `{:ok, number}` or `{:error, reason}`.
@@ -63,14 +63,12 @@ defmodule Calculator do
 
   defp term, do: chainl1(lazy(&factor/0), mul_op())
 
-  # In these `map` callbacks the argument is the whole `[:seq | children]` node,
-  # so the value sits one position further right than the source order.
+  # Written with the `<|>` (choice) operator; the `map` callbacks take the whole
+  # `[:seq | children]` node, so the value sits one position right of source order.
   defp factor do
-    alt([
-      number(),
-      map(seq([str("("), ws(), lazy(&expr/0), ws(), str(")")]), fn [_seq, _lp, _ws1, value, _ws2, _rp] -> value end),
-      map(seq([str("-"), ws(), lazy(&factor/0)]), fn [_seq, _minus, _ws, value] -> -value end)
-    ])
+    number()
+    <|> map(seq([str("("), ws(), lazy(&expr/0), ws(), str(")")]), fn [_seq, _lp, _ws1, value, _ws2, _rp] -> value end)
+    <|> map(seq([str("-"), ws(), lazy(&factor/0)]), fn [_seq, _minus, _ws, value] -> -value end)
   end
 
   defp add_op do
@@ -93,11 +91,10 @@ defmodule Calculator do
     map(seq([ws(), str(token), ws()]), fn _ -> fun end)
   end
 
+  # Written with the `~>` (map) operator and given a friendly label for errors.
   defp number do
-    map(
-      text(seq([opt(one_of("+-")), digits(), opt(seq([str("."), digits()]))])),
-      &to_number/1
-    )
+    raw = seq([opt(one_of("+-")), digits(), opt(seq([str("."), digits()]))])
+    label(text(raw) ~> (&to_number/1), "a number")
   end
 
   defp digits, do: rep(char("0-9"), 1)

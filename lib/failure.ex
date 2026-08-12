@@ -45,6 +45,23 @@ defmodule Combinators.Failure do
   end
 
   @doc """
+  Replace the expectation at `state` with a single friendly `name`, unless a
+  deeper failure has already been recorded. This is how `Combinators.label/2`
+  turns a wall of low-level expectations into one readable message (like
+  Parsec's `<?>`), while still deferring to any error found *after* input was
+  consumed.
+  """
+  @spec relabel(State.t(), binary) :: nil
+  def relabel(%State{offset: offset, line: line, column: column}, name) do
+    case Process.get(@key) do
+      {best, _line, _col, _expected} when offset < best -> :ok
+      _ -> Process.put(@key, {offset, line, column, [name]})
+    end
+
+    nil
+  end
+
+  @doc """
   Return the deepest recorded failure as a map, or `nil` if none was recorded.
   The `:expected` list is de-duplicated and in the order the expectations were
   first seen.
