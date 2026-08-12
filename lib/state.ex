@@ -5,6 +5,13 @@ defmodule State do
 
   defstruct [:string, :offset, :line, :column]
 
+  @type t :: %__MODULE__{
+          string: binary,
+          offset: non_neg_integer,
+          line: pos_integer,
+          column: non_neg_integer
+        }
+
   @doc """
   Create and return a new `State` with the input string and an offset of 0
   """
