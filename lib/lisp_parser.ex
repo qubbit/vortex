@@ -26,6 +26,8 @@ defmodule LispParser do
     * symbols  -> `{:symbol, binary}`
     * lists    -> `{:list, [ast, ...]}`
     * quotes   -> `{:quote, ast}`
+    * quasiquote (`` ` ``) -> `{:quasiquote, ast}`, with `,` -> `{:unquote, ast}`
+      and `,@` -> `{:unquote_splicing, ast}` markers inside it
 
   ## Examples
 
@@ -48,7 +50,17 @@ defmodule LispParser do
                   "ABCDEFGHIJKLMNOPQRSTUVWXYZ" <>
                   "0123456789" <> "+-*/!?<>=_.:$%&^~@"
 
-  @expr_labels [:lisp_list, :lisp_quote, :lisp_number, :lisp_string, :lisp_bool, :lisp_symbol]
+  @expr_labels [
+    :lisp_list,
+    :lisp_quote,
+    :lisp_quasiquote,
+    :lisp_unquote,
+    :lisp_unquote_splicing,
+    :lisp_number,
+    :lisp_string,
+    :lisp_bool,
+    :lisp_symbol
+  ]
 
   # --- public API ----------------------------------------------------------
 
@@ -98,7 +110,16 @@ defmodule LispParser do
   def program, do: seq([many(seq([ws(), lazy(&expr/0)])), ws()], :program)
 
   @doc false
-  def expr, do: alt([list_expr(), quote_expr(), atom()])
+  def expr do
+    alt([
+      list_expr(),
+      quote_expr(),
+      quasiquote_expr(),
+      unquote_splicing_expr(),
+      unquote_expr(),
+      atom()
+    ])
+  end
 
   @doc false
   def atom, do: alt([number(), string_lit(), boolean(), symbol()])
@@ -110,6 +131,16 @@ defmodule LispParser do
 
   @doc false
   def quote_expr, do: seq([str("'"), ws(), lazy(&expr/0)], :lisp_quote)
+
+  @doc false
+  def quasiquote_expr, do: seq([str("`"), ws(), lazy(&expr/0)], :lisp_quasiquote)
+
+  # `,@` must be tried before `,` so the splicing form wins.
+  @doc false
+  def unquote_splicing_expr, do: seq([str(",@"), ws(), lazy(&expr/0)], :lisp_unquote_splicing)
+
+  @doc false
+  def unquote_expr, do: seq([str(","), ws(), lazy(&expr/0)], :lisp_unquote)
 
   @doc false
   def number, do: alt([float_lit(), integer_lit()])
@@ -158,14 +189,19 @@ defmodule LispParser do
   defp expr_nodes([_label | children]), do: Enum.flat_map(children, &expr_nodes/1)
   defp expr_nodes(_), do: []
 
+  # The single expression carried by a reader-macro form (quote, quasiquote, ...).
+  defp inner_expr(children), do: children |> Enum.flat_map(&expr_nodes/1) |> hd()
+
   defp to_ast([:lisp_list | children]) do
     {:list, children |> Enum.flat_map(&expr_nodes/1) |> Enum.map(&to_ast/1)}
   end
 
-  defp to_ast([:lisp_quote | children]) do
-    [inner] = children |> Enum.flat_map(&expr_nodes/1)
-    {:quote, to_ast(inner)}
-  end
+  defp to_ast([:lisp_quote | children]), do: {:quote, to_ast(inner_expr(children))}
+  defp to_ast([:lisp_quasiquote | children]), do: {:quasiquote, to_ast(inner_expr(children))}
+  defp to_ast([:lisp_unquote | children]), do: {:unquote, to_ast(inner_expr(children))}
+
+  defp to_ast([:lisp_unquote_splicing | children]),
+    do: {:unquote_splicing, to_ast(inner_expr(children))}
 
   defp to_ast([:lisp_number | _] = node), do: {:number, parse_number(collect_text(node))}
 

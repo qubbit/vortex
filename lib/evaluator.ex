@@ -3,9 +3,14 @@ defmodule Evaluator do
   A small Scheme-flavoured evaluator for the AST produced by `LispParser`.
 
   It walks the parse result and computes a value, supporting the special forms
-  `quote`, `if`, `cond` (with `else`), `define`, `lambda`, `let`, `let*`, `and`,
+  `quote`, `quasiquote` (with `unquote` and `unquote-splicing`), `if`, `cond`
+  (with `else`), `when`, `unless`, `define`, `lambda`, `let`, `let*`, `and`,
   `or`, `begin` and `set!`, plus a standard library of numeric, list and
   higher-order procedures (see `builtins/0`).
+
+  Evaluation is trampolined, so calls in tail position (in `if`, `cond`,
+  `when`/`unless`, `let`, `begin` and function bodies) run in constant stack
+  space and tight tail-recursive loops don't overflow.
 
   Runtime values map onto Elixir values:
 
@@ -33,7 +38,7 @@ defmodule Evaluator do
       {:ok, [1, 4, 9, 16]}
   """
 
-  @special_forms ~w(quote if cond define lambda let let* and or begin set!)
+  @special_forms ~w(quote quasiquote if cond when unless define lambda let let* and or begin set!)
 
   # --- public API ----------------------------------------------------------
 
@@ -43,9 +48,12 @@ defmodule Evaluator do
   """
   @spec eval(binary) :: {:ok, any} | {:error, binary}
   def eval(source) when is_binary(source) do
-    case LispParser.parse(source) do
-      {:ok, forms} -> run_forms(forms)
-      {:error, _} = error -> error
+    env = start_env()
+
+    try do
+      eval_string(env, source)
+    after
+      stop_env(env)
     end
   end
 
@@ -67,6 +75,58 @@ defmodule Evaluator do
   def eval_file(path), do: path |> File.read!() |> eval()
 
   @doc """
+  Create a fresh, persistent environment pre-loaded with the standard library.
+  Pair it with `eval_string/2` and `stop_env/1` — for example to keep `define`s
+  alive across several inputs, as the REPL does. Remember to call `stop_env/1`
+  when done to release the backing process.
+  """
+  @spec start_env() :: map
+  def start_env do
+    {:ok, pid} = Agent.start_link(fn -> builtins() end)
+    %{local: [], global: pid}
+  end
+
+  @doc "Release the process backing an environment from `start_env/0`."
+  @spec stop_env(map) :: :ok
+  def stop_env(%{global: pid}), do: Agent.stop(pid)
+
+  @doc """
+  Evaluate `source` in an existing environment (from `start_env/0`), returning
+  `{:ok, value}` or `{:error, reason}`. State such as `define`s persists in the
+  environment across calls.
+  """
+  @spec eval_string(map, binary) :: {:ok, any} | {:error, binary}
+  def eval_string(env, source) when is_binary(source) do
+    case LispParser.parse(source) do
+      {:ok, forms} ->
+        try do
+          {:ok, eval_forms(forms, env)}
+        rescue
+          e in [ArgumentError, RuntimeError, ArithmeticError] -> {:error, Exception.message(e)}
+        end
+
+      {:error, _} = error ->
+        error
+    end
+  end
+
+  @doc """
+  Start an interactive read-eval-print loop on standard input. Definitions
+  persist across lines; enter `(exit)` or send EOF (Ctrl-D) to leave.
+  """
+  @spec repl() :: :ok
+  def repl do
+    env = start_env()
+    IO.puts("Vortex LISP REPL — type (exit) or press Ctrl-D to quit.")
+
+    try do
+      repl_loop(env)
+    after
+      stop_env(env)
+    end
+  end
+
+  @doc """
   Render a runtime value the way a Scheme `display` would: strings without
   quotes, booleans as `#t`/`#f`, lists in parentheses.
   """
@@ -75,148 +135,260 @@ defmodule Evaluator do
 
   # --- evaluation core -----------------------------------------------------
 
-  defp run_forms(forms) do
-    {:ok, pid} = Agent.start_link(fn -> builtins() end)
-    env = %{local: [], global: pid}
+  defp eval_forms(forms, env) do
+    Enum.reduce(forms, [], fn form, _acc -> eval_ast(form, env) end)
+  end
 
-    try do
-      value = Enum.reduce(forms, [], fn form, _acc -> eval_ast(form, env) end)
-      {:ok, value}
-    rescue
-      e in [ArgumentError, RuntimeError, ArithmeticError] -> {:error, Exception.message(e)}
-    after
-      Agent.stop(pid)
+  defp repl_loop(env) do
+    case IO.gets("lisp> ") do
+      :eof ->
+        IO.puts("")
+        :ok
+
+      {:error, _reason} ->
+        :ok
+
+      line ->
+        case String.trim(line) do
+          "" ->
+            repl_loop(env)
+
+          input when input in ["(exit)", ":q", ":quit"] ->
+            :ok
+
+          input ->
+            case eval_string(env, input) do
+              {:ok, value} -> IO.puts(do_render(value))
+              {:error, reason} -> IO.puts("error: #{reason}")
+            end
+
+            repl_loop(env)
+        end
     end
   end
 
-  defp eval_ast({:number, n}, _env), do: n
-  defp eval_ast({:string, s}, _env), do: s
-  defp eval_ast({:bool, b}, _env), do: b
-  defp eval_ast({:symbol, name}, env), do: lookup(env, name)
-  defp eval_ast({:quote, datum}, _env), do: to_datum(datum)
-
-  defp eval_ast({:list, [{:symbol, name} | args]}, env) when name in @special_forms do
-    eval_special(name, args, env)
+  # A trampoline: `eval_ast` loops on the `{:tail, form, env}` directives that
+  # `step/2` returns for expressions in tail position, so a tail-recursive
+  # function runs in constant stack space instead of growing the call stack.
+  defp eval_ast(form, env) do
+    case step(form, env) do
+      {:done, value} -> value
+      {:tail, next_form, next_env} -> eval_ast(next_form, next_env)
+    end
   end
 
-  defp eval_ast({:list, [op | args]}, env) do
-    apply_fn(eval_ast(op, env), eval_args(args, env))
+  defp step({:number, n}, _env), do: {:done, n}
+  defp step({:string, s}, _env), do: {:done, s}
+  defp step({:bool, b}, _env), do: {:done, b}
+  defp step({:symbol, name}, env), do: {:done, lookup(env, name)}
+  defp step({:quote, datum}, _env), do: {:done, to_datum(datum)}
+  defp step({:quasiquote, form}, env), do: {:done, quasi(form, env, 1)}
+
+  defp step({:unquote, _form}, _env) do
+    raise ArgumentError, "unquote (,) used outside of a quasiquote"
   end
 
-  defp eval_ast({:list, []}, _env) do
+  defp step({:unquote_splicing, _form}, _env) do
+    raise ArgumentError, "unquote-splicing (,@) used outside of a quasiquote"
+  end
+
+  defp step({:list, [{:symbol, name} | args]}, env) when name in @special_forms do
+    step_special(name, args, env)
+  end
+
+  defp step({:list, [op | args]}, env), do: step_apply(op, args, env)
+
+  defp step({:list, []}, _env) do
     raise ArgumentError, "cannot evaluate the empty combination ()"
   end
 
-  defp eval_args(args, env), do: Enum.map(args, &eval_ast(&1, env))
+  # `tail_body` evaluates every form but the last eagerly, then hands the last
+  # back to the trampoline in tail position.
+  defp tail_body([], _env), do: {:done, []}
 
-  defp eval_seq([], _env), do: []
-  defp eval_seq(forms, env), do: Enum.reduce(forms, [], fn f, _ -> eval_ast(f, env) end)
+  defp tail_body(forms, env) do
+    {leading, [last]} = Enum.split(forms, -1)
+    Enum.each(leading, &eval_ast(&1, env))
+    {:tail, last, env}
+  end
 
   # --- special forms -------------------------------------------------------
 
-  defp eval_special("quote", [datum], _env), do: to_datum(datum)
+  defp step_special("quote", [datum], _env), do: {:done, to_datum(datum)}
 
-  defp eval_special("if", [test, then_form], env) do
-    if truthy?(eval_ast(test, env)), do: eval_ast(then_form, env), else: false
+  defp step_special("quasiquote", [form], env), do: {:done, quasi(form, env, 1)}
+
+  defp step_special("if", [test, then_form], env) do
+    if truthy?(eval_ast(test, env)), do: {:tail, then_form, env}, else: {:done, false}
   end
 
-  defp eval_special("if", [test, then_form, else_form], env) do
+  defp step_special("if", [test, then_form, else_form], env) do
     if truthy?(eval_ast(test, env)),
-      do: eval_ast(then_form, env),
-      else: eval_ast(else_form, env)
+      do: {:tail, then_form, env},
+      else: {:tail, else_form, env}
   end
 
-  defp eval_special("cond", clauses, env), do: eval_cond(clauses, env)
+  defp step_special("cond", clauses, env), do: step_cond(clauses, env)
 
-  defp eval_special("define", [{:symbol, name}, value_form], env) do
+  defp step_special("when", [test | body], env) do
+    if truthy?(eval_ast(test, env)), do: tail_body(body, env), else: {:done, false}
+  end
+
+  defp step_special("unless", [test | body], env) do
+    if truthy?(eval_ast(test, env)), do: {:done, false}, else: tail_body(body, env)
+  end
+
+  defp step_special("define", [{:symbol, name}, value_form], env) do
     define(env, name, eval_ast(value_form, env))
-    {:symbol, name}
+    {:done, {:symbol, name}}
   end
 
-  defp eval_special("define", [{:list, [{:symbol, name} | params]} | body], env) do
+  defp step_special("define", [{:list, [{:symbol, name} | params]} | body], env) do
     define(env, name, {:closure, param_names(params), body, env})
-    {:symbol, name}
+    {:done, {:symbol, name}}
   end
 
-  defp eval_special("lambda", [{:list, params} | body], env) do
-    {:closure, param_names(params), body, env}
+  defp step_special("lambda", [{:list, params} | body], env) do
+    {:done, {:closure, param_names(params), body, env}}
   end
 
-  defp eval_special("let", [{:list, bindings} | body], env) do
+  defp step_special("let", [{:list, bindings} | body], env) do
     frame =
       Enum.reduce(bindings, %{}, fn {:list, [{:symbol, name}, form]}, acc ->
         Map.put(acc, name, eval_ast(form, env))
       end)
 
-    eval_seq(body, extend(env, frame))
+    tail_body(body, extend(env, frame))
   end
 
-  defp eval_special("let*", [{:list, bindings} | body], env) do
+  defp step_special("let*", [{:list, bindings} | body], env) do
     inner_env =
       Enum.reduce(bindings, env, fn {:list, [{:symbol, name}, form]}, acc_env ->
         extend(acc_env, %{name => eval_ast(form, acc_env)})
       end)
 
-    eval_seq(body, inner_env)
+    tail_body(body, inner_env)
   end
 
-  defp eval_special("and", args, env) do
+  defp step_special("and", args, env), do: {:done, eval_and(args, env)}
+
+  defp step_special("or", args, env), do: {:done, eval_or(args, env)}
+
+  defp step_special("begin", args, env), do: tail_body(args, env)
+
+  defp step_special("set!", [{:symbol, name}, value_form], env) do
+    value = eval_ast(value_form, env)
+    set_var(env, name, value)
+    {:done, value}
+  end
+
+  defp step_special(name, _args, _env) do
+    raise ArgumentError, "ill-formed special form: #{name}"
+  end
+
+  defp step_cond([], _env), do: {:done, false}
+
+  defp step_cond([{:list, [{:symbol, "else"} | body]} | _rest], env), do: tail_body(body, env)
+
+  defp step_cond([{:list, [test | body]} | rest], env) do
+    value = eval_ast(test, env)
+
+    cond do
+      not truthy?(value) -> step_cond(rest, env)
+      body == [] -> {:done, value}
+      true -> tail_body(body, env)
+    end
+  end
+
+  defp step_apply(op, args, env) do
+    fun = eval_ast(op, env)
+    argv = Enum.map(args, &eval_ast(&1, env))
+
+    case fun do
+      {:builtin, _name, f} ->
+        {:done, f.(argv)}
+
+      {:closure, params, body, captured_env} ->
+        check_arity(params, argv)
+        frame = params |> Enum.zip(argv) |> Map.new()
+        tail_body(body, extend(captured_env, frame))
+
+      other ->
+        raise ArgumentError, "not a procedure: #{do_render(other)}"
+    end
+  end
+
+  defp eval_and(args, env) do
     Enum.reduce_while(args, true, fn form, _ ->
       value = eval_ast(form, env)
       if truthy?(value), do: {:cont, value}, else: {:halt, false}
     end)
   end
 
-  defp eval_special("or", args, env) do
+  defp eval_or(args, env) do
     Enum.reduce_while(args, false, fn form, _ ->
       value = eval_ast(form, env)
       if truthy?(value), do: {:halt, value}, else: {:cont, false}
     end)
   end
 
-  defp eval_special("begin", args, env), do: eval_seq(args, env)
-
-  defp eval_special("set!", [{:symbol, name}, value_form], env) do
-    value = eval_ast(value_form, env)
-    set_var(env, name, value)
-    value
-  end
-
-  defp eval_special(name, _args, _env) do
-    raise ArgumentError, "ill-formed special form: #{name}"
-  end
-
-  defp eval_cond([], _env), do: false
-
-  defp eval_cond([{:list, [{:symbol, "else"} | body]} | _rest], env), do: eval_seq(body, env)
-
-  defp eval_cond([{:list, [test | body]} | rest], env) do
-    value = eval_ast(test, env)
-
-    cond do
-      not truthy?(value) -> eval_cond(rest, env)
-      body == [] -> value
-      true -> eval_seq(body, env)
-    end
-  end
-
   defp param_names(params), do: Enum.map(params, fn {:symbol, name} -> name end)
 
-  # --- application ---------------------------------------------------------
+  # --- application (value-returning, used by higher-order builtins) --------
 
   defp apply_fn({:builtin, _name, fun}, args), do: fun.(args)
 
   defp apply_fn({:closure, params, body, captured_env}, args) do
+    check_arity(params, args)
+    frame = params |> Enum.zip(args) |> Map.new()
+    eval_body(body, extend(captured_env, frame))
+  end
+
+  defp apply_fn(other, _args), do: raise(ArgumentError, "not a procedure: #{do_render(other)}")
+
+  defp eval_body([], _env), do: []
+
+  defp eval_body(forms, env) do
+    {leading, [last]} = Enum.split(forms, -1)
+    Enum.each(leading, &eval_ast(&1, env))
+    eval_ast(last, env)
+  end
+
+  defp check_arity(params, args) do
     unless length(params) == length(args) do
       raise ArgumentError,
             "arity mismatch: expected #{length(params)} argument(s), got #{length(args)}"
     end
-
-    frame = params |> Enum.zip(args) |> Map.new()
-    eval_seq(body, extend(captured_env, frame))
   end
 
-  defp apply_fn(other, _args), do: raise(ArgumentError, "not a procedure: #{do_render(other)}")
+  # --- quasiquote ----------------------------------------------------------
+
+  defp quasi({:unquote, form}, env, 1), do: eval_ast(form, env)
+  defp quasi({:unquote, form}, env, depth), do: [{:symbol, "unquote"}, quasi(form, env, depth - 1)]
+
+  defp quasi({:quasiquote, form}, env, depth) do
+    [{:symbol, "quasiquote"}, quasi(form, env, depth + 1)]
+  end
+
+  defp quasi({:unquote_splicing, form}, env, depth) when depth > 1 do
+    [{:symbol, "unquote-splicing"}, quasi(form, env, depth - 1)]
+  end
+
+  defp quasi({:unquote_splicing, _form}, _env, 1) do
+    raise ArgumentError, "unquote-splicing (,@) is only valid inside a list"
+  end
+
+  defp quasi({:list, items}, env, depth), do: quasi_list(items, env, depth)
+  defp quasi({:quote, form}, env, depth), do: [{:symbol, "quote"}, quasi(form, env, depth)]
+  defp quasi(other, _env, _depth), do: to_datum(other)
+
+  defp quasi_list([], _env, _depth), do: []
+
+  defp quasi_list([{:unquote_splicing, form} | rest], env, 1) do
+    as_list(eval_ast(form, env)) ++ quasi_list(rest, env, 1)
+  end
+
+  defp quasi_list([item | rest], env, depth), do: [quasi(item, env, depth) | quasi_list(rest, env, depth)]
 
   # --- environment ---------------------------------------------------------
 
@@ -267,6 +439,9 @@ defmodule Evaluator do
   defp to_datum({:symbol, name}), do: {:symbol, name}
   defp to_datum({:list, items}), do: Enum.map(items, &to_datum/1)
   defp to_datum({:quote, datum}), do: [{:symbol, "quote"}, to_datum(datum)]
+  defp to_datum({:quasiquote, datum}), do: [{:symbol, "quasiquote"}, to_datum(datum)]
+  defp to_datum({:unquote, datum}), do: [{:symbol, "unquote"}, to_datum(datum)]
+  defp to_datum({:unquote_splicing, datum}), do: [{:symbol, "unquote-splicing"}, to_datum(datum)]
 
   # --- truthiness & rendering ---------------------------------------------
 

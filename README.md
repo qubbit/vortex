@@ -56,8 +56,8 @@ Parser.parse("goodbye", str("hello"))
 
 `LispParser.parse/1` reads one or more top-level forms into a compact AST;
 `parse_one/1` requires exactly one form. Numbers, strings (with escapes),
-booleans (`#t`/`#f`), symbols, lists, quotes and `;` line comments are all
-supported.
+booleans (`#t`/`#f`), symbols, lists, quote (`'`), quasiquote (`` ` ``, `,`,
+`,@`) and `;` line comments are all supported.
 
 ```elixir
 LispParser.parse("(+ 1 2)")
@@ -70,9 +70,11 @@ LispParser.parse_one("'(1 2.5 \"three\")")
 ## LISP evaluator
 
 `Evaluator.eval/1` parses and runs a program, returning the value of the last
-form. It supports `quote`, `if`, `cond`, `define`, `lambda`, `let`, `let*`,
-`and`, `or`, `begin` and `set!`, plus a standard library of numeric, list and
-higher-order procedures.
+form. It supports `quote`, `quasiquote` (with `unquote`/`unquote-splicing`),
+`if`, `cond`, `when`, `unless`, `define`, `lambda`, `let`, `let*`, `and`, `or`,
+`begin` and `set!`, plus a standard library of numeric, list and higher-order
+procedures. Evaluation is trampolined, so tail-recursive loops run in constant
+stack space.
 
 ```elixir
 Evaluator.eval("(define (square x) (* x x)) (square 9)")
@@ -81,8 +83,18 @@ Evaluator.eval("(define (square x) (* x x)) (square 9)")
 Evaluator.eval("(map (lambda (x) (* x x)) '(1 2 3 4))")
 #=> {:ok, [1, 4, 9, 16]}
 
+Evaluator.eval("(define x 10) `(1 ,x ,@(list 2 3))")
+#=> {:ok, [1, 10, 2, 3]}
+
 Evaluator.eval_file("examples/quicksort.lisp")
 #=> {:ok, [1, 1, 2, 3, 3, 4, 5, 5, 5, 6, 9]}
+```
+
+Run a file or start an interactive REPL from the command line:
+
+```
+mix lisp examples/quicksort.lisp
+mix lisp
 ```
 
 Runnable sample programs (quicksort, factorial, Fibonacci, higher-order
