@@ -88,6 +88,32 @@ Evaluator.eval_file("examples/quicksort.lisp")
 Runnable sample programs (quicksort, factorial, Fibonacci, higher-order
 functions and classic recursive algorithms) live in [`examples/`](examples).
 
+## JSON parser
+
+`JsonParser.parse/1` reads a complete JSON document into Elixir data — maps,
+lists, strings (with `\uXXXX` and the standard escapes), numbers, booleans and
+`nil`.
+
+```elixir
+JsonParser.parse(~s({"a": 1, "b": [true, null]}))
+#=> {:ok, %{"a" => 1, "b" => [true, nil]}}
+
+JsonParser.parse("[1, 2.5, -3e2]")
+#=> {:ok, [1, 2.5, -300.0]}
+```
+
+## Arithmetic calculator
+
+`Calculator.eval/1` parses and evaluates an arithmetic expression in one pass,
+using the `chainl1/2` combinator to get operator precedence and
+left-associativity right. It supports `+ - * /`, parentheses and unary minus.
+
+```elixir
+Calculator.eval("1 + 2 * 3")     #=> {:ok, 7}
+Calculator.eval("(1 + 2) * 3")   #=> {:ok, 9}
+Calculator.eval("10 - 2 - 3")    #=> {:ok, 5}
+```
+
 ## Development
 
 ```

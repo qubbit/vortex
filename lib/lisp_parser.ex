@@ -179,11 +179,9 @@ defmodule LispParser do
 
   defp to_ast([:lisp_symbol | _] = node), do: {:symbol, collect_text(node)}
 
-  # Concatenate every string leaf under a node, giving the exact substring the
-  # node consumed regardless of how the combinators nested it.
-  defp collect_text(bin) when is_binary(bin), do: bin
-  defp collect_text([_label | children]), do: children |> Enum.map(&collect_text/1) |> Enum.join()
-  defp collect_text(_), do: ""
+  # `collect_text/1` (imported from Combinators) concatenates every string leaf
+  # under a node, giving the exact substring the node consumed regardless of how
+  # the combinators nested it.
 
   defp parse_number(text) do
     text = String.replace_prefix(text, "+", "")
