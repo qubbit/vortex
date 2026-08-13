@@ -104,6 +104,30 @@ tokens, so those live as the functions above. The four operators that do exist
 share one precedence level and are left-associative, so `a <\|> b ~> f` means
 `(a <\|> b) ~> f` — parenthesise when you mean otherwise.
 
+### Expression grammars
+
+`Combinators.Expr.expression/2` builds an expression parser from an operator
+table (Parsec's `buildExpressionParser` / Megaparsec's `makeExprParser`). List
+the levels tightest-binding first; `infixl` / `infixr` / `infixn` / `prefix` /
+`postfix` describe the operators, each carrying the function to apply:
+
+```elixir
+import Combinators.Expr
+
+expr = expression(atom(), [
+  [prefix("-", &(-&1))],
+  [infixr("^", &Integer.pow/2)],
+  [infixl("*", &*/2), infixl("/", &div/2)],
+  [infixl("+", &+/2), infixl("-", &-/2)]
+])
+
+Parser.parse("2+3*4",  expr)   #=> {:ok, 14}
+Parser.parse("2^3^2",  expr)   #=> {:ok, 512}   # right-associative
+```
+
+`lib/calculator.ex` is built this way — the whole precedence structure is one
+table.
+
 ### Left recursion
 
 Normally a rule that refers to itself at the same position loops forever.
