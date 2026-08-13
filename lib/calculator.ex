@@ -31,7 +31,8 @@ defmodule Calculator do
   """
 
   import Combinators
-  import Combinators.Builtin, only: [chainl1: 2, one_of: 1, "<|>": 2, "~>": 2]
+  import Combinators.Builtin, only: [chainl1: 2, one_of: 1, "~>": 2]
+  import Combinators.DSL
 
   @doc """
   Parse and evaluate `source`, returning `{:ok, number}` or `{:error, reason}`.
@@ -63,12 +64,33 @@ defmodule Calculator do
 
   defp term, do: chainl1(lazy(&factor/0), mul_op())
 
-  # Written with the `<|>` (choice) operator; the `map` callbacks take the whole
-  # `[:seq | children]` node, so the value sits one position right of source order.
+  # Written with the `choice`/`sequence` block macros.
   defp factor do
-    number()
-    <|> map(seq([str("("), ws(), lazy(&expr/0), ws(), str(")")]), fn [_seq, _lp, _ws1, value, _ws2, _rp] -> value end)
-    <|> map(seq([str("-"), ws(), lazy(&factor/0)]), fn [_seq, _minus, _ws, value] -> -value end)
+    choice do
+      number()
+      parenthesised()
+      negated()
+    end
+  end
+
+  defp parenthesised do
+    sequence do
+      _ <- str("(")
+      _ <- ws()
+      value <- lazy(&expr/0)
+      _ <- ws()
+      _ <- str(")")
+      return value
+    end
+  end
+
+  defp negated do
+    sequence do
+      _ <- str("-")
+      _ <- ws()
+      value <- lazy(&factor/0)
+      return -value
+    end
   end
 
   defp add_op do

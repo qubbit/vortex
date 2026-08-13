@@ -277,6 +277,32 @@ defmodule Combinators do
   end
 
   @doc """
+  Monadic bind: run `parser`, then feed its result node to `fun`, which returns
+  the next parser to run from the new position. Fails if `parser` fails. This is
+  the primitive the `Combinators.DSL.sequence/1` macro desugars to.
+  """
+  @spec bind(parser :: function, fun :: (any -> function)) :: (state -> {any, state} | nil)
+  def bind(parser, fun) do
+    fn state ->
+      case parser.(state) do
+        {node, new_state} -> fun.(node).(new_state)
+        nil -> nil
+      end
+    end
+  end
+
+  @doc """
+  A parser that always succeeds with `value`, consuming no input (`return`/`pure`
+  in the applicative sense). Pairs with `bind/2` and `sequence`.
+  """
+  @spec return(any) :: (state -> {any, state})
+  def return(value), do: fn state -> {value, state} end
+
+  @doc "Alias for `return/1`."
+  @spec pure(any) :: (state -> {any, state})
+  def pure(value), do: return(value)
+
+  @doc """
   Replace `parser`'s node with the exact substring it consumed. Handy for
   turning a structured match (a number, an identifier) back into raw text
   before converting it to a value.
@@ -351,7 +377,7 @@ defmodule Combinators.Builtin do
 
   | Operator | Function | Meaning (Parsec analogue) |
   | --- | --- | --- |
-  | `a <\|> b` | `Combinators.alt/1` / `choice/1` | ordered choice (`<\|>`) |
+  | `a <\|> b` | `Combinators.alt/1` | ordered choice (`<\|>`) |
   | `p ~> f` | `Combinators.map/2` | transform the result (`<$>`) |
   | `a ~>> b` | `Combinators.keep_right/2` | sequence, keep the right (`*>`) |
   | `a <<~ b` | `Combinators.keep_left/2` | sequence, keep the left (`<*`) |
@@ -427,12 +453,6 @@ defmodule Combinators.Builtin do
   one match.
   """
   def many1(parser), do: rep(parser, 1)
-
-  @doc """
-  Alias for `Combinators.alt/1`: succeed with the first parser in `parsers`
-  that matches.
-  """
-  def choice(parsers), do: alt(parsers)
 
   @doc """
   Match `parser` wrapped between `open` and `close`. All three must match for

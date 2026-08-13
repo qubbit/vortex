@@ -89,11 +89,7 @@ defmodule OperatorsTest do
     end
   end
 
-  describe "choice/1 and optional/1 aliases" do
-    test "choice is alt" do
-      assert run(choice([str("a"), str("b")]), "b") == run(alt([str("a"), str("b")]), "b")
-    end
-
+  describe "optional/1 alias" do
     test "optional is opt" do
       assert {[:opt, []], _} = run(optional(str("x")), "y")
     end

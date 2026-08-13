@@ -38,6 +38,34 @@ being built:
 def parens, do: seq([str("("), opt(lazy(&parens/0)), str(")")])
 ```
 
+### Block DSL
+
+`import Combinators.DSL` for two macros that make grammars read top-to-bottom.
+`sequence` is do-notation for `seq` — run parsers in order, bind the results you
+want with `<-`, and `return` a value; `choice` lists one alternative per line:
+
+```elixir
+def parenthesised do
+  sequence do
+    _     <- str("(")
+    value <- expr()
+    _     <- str(")")
+    return value
+  end
+end
+
+def factor do
+  choice do
+    number()
+    parenthesised()
+    negated()
+  end
+end
+```
+
+`sequence` desugars to `Combinators.bind/2` and `Combinators.return/1`; the bound
+pattern is an ordinary Elixir pattern, so you can destructure a node inline.
+
 Other primitives include `eof` (assert end of input), `followed_by` /
 `not_followed_by` (positive / negative lookahead), and `count` / `rep_range`
 (exact and bounded repetition).
