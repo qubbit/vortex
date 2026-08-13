@@ -31,9 +31,12 @@ jobs:
           # A middle version, to catch breakage between the floor and current.
           - elixir: "1.15.7"
             otp: "26.2"
-          # What development currently happens on (see .tool-versions).
+          # The previous release, kept so a 1.20-only regression is obvious.
           - elixir: "1.19.0"
             otp: "28.1"
+          # What development currently happens on (see .tool-versions).
+          - elixir: "1.20.3"
+            otp: "29.0.5"
             check_format: true
 
     steps:
@@ -74,8 +77,8 @@ jobs:
             mix lisp "$file"
           done
 
-      # Only checked on the newest version: formatter output differs between
-      # Elixir releases, so pinning it to one version avoids spurious failures.
+      # Only checked on the newest version (1.20): formatter output differs
+      # between Elixir releases, so pinning it avoids spurious failures.
       - name: Check formatting
         if: matrix.check_format
         run: mix format --check-formatted
