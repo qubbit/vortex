@@ -10,7 +10,7 @@ error-reporting system, linear-time parsing, Parsec-style operators, left
 recursion, and several DSLs.
 
 - **Tests:** 255 tests + 14 doctests, all passing.
-- **Elixir:** `~> 1.12` (developed/tested on 1.19, OTP 28). No runtime deps.
+- **Elixir:** `~> 1.12` (developed/tested on 1.20.3, OTP 29). No runtime deps.
 - **Layout:** `lib/` (source), `test/` (ExUnit), `examples/` (runnable LISP),
   `bench/` (perf script).
 
@@ -27,8 +27,8 @@ mix format --check-formatted   # enforced by CI
 ```
 
 CI ([.github/workflows/ci.yml](.github/workflows/ci.yml)) runs the suite on an
-Elixir 1.12 / 1.15 / 1.19 matrix, executes every `examples/*.lisp`, and checks
-formatting (on 1.19 only — formatter output varies by release).
+Elixir 1.12 / 1.15 / 1.19 / 1.20 matrix, executes every `examples/*.lisp`, and
+checks formatting (on 1.20 only — formatter output varies by release).
 
 > **Dev-deps.** `mix.exs` declares dev/test-only tooling (`ex_doc`, `dialyxir`,
 > `credo`); none are needed to compile or test the library itself. The versions
@@ -327,6 +327,8 @@ Runnable LISP with expected results in [examples/README.md](examples/README.md):
 13. **#13** — Tests pinning indirect left-recursion behaviour.
 14. **#14** — GitHub Actions CI (Elixir 1.12/1.15/1.19 matrix) + `mix format`
     pass over the repo.
+15. **#15** — Bump dev toolchain to Elixir 1.20.3 / OTP 29.0.5; CI matrix gains
+    a 1.20 row.
 
 ---
 
