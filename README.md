@@ -76,6 +76,29 @@ tokens, so those live as the functions above. The four operators that do exist
 share one precedence level and are left-associative, so `a <\|> b ~> f` means
 `(a <\|> b) ~> f` — parenthesise when you mean otherwise.
 
+### Left recursion
+
+Normally a rule that refers to itself at the same position loops forever.
+`rule/2` handles **direct left recursion** with packrat memoisation and seed
+growing, so you can write naturally left-associative grammars directly:
+
+```elixir
+def expr do
+  rule(:expr, fn ->
+    alt([
+      seq([expr(), str("+"), term()]) ~> fn [_, a, _, b] -> a + b end,
+      seq([expr(), str("-"), term()]) ~> fn [_, a, _, b] -> a - b end,
+      term()
+    ])
+  end)
+end
+```
+
+`Parser.parse("10-2-3", expr())` yields `5` — left-associative — not `11`.
+Results are memoised per `{rule, position}` within a run, so `rule/2` also
+gives packrat performance to any named rule, recursive or not. See
+`Combinators.LeftRec` for details.
+
 ### Error messages
 
 When a parse fails, `Parser.parse/2` reports the furthest position it reached
