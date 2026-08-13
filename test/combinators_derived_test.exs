@@ -79,15 +79,15 @@ defmodule CombinatorsDerivedTest do
     end
   end
 
-  describe "choice" do
+  describe "alt (a.k.a. the choice do-block)" do
     test "succeeds with the first matching alternative" do
-      p = choice([char("a-c"), char("0-9")])
+      p = alt([char("a-c"), char("0-9")])
       assert {[:char, "b"], ""} = run(p, "b")
       assert {[:char, "7"], ""} = run(p, "7")
     end
 
     test "fails when no alternative matches" do
-      assert nil == run(choice([char("a-c"), char("0-9")]), "z")
+      assert nil == run(alt([char("a-c"), char("0-9")]), "z")
     end
   end
 
