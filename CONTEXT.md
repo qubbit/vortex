@@ -130,6 +130,11 @@ Operators (each is sugar for a named fn; both spellings coexist):
 > four operators that exist share **one** left-associative precedence level, so
 > `a <\|> b ~> f` == `(a <\|> b) ~> f` — parenthesise when mixing.
 
+Whitespace layer (`lexeme` convention — every token eats its *trailing* space,
+so a grammar only skips leading space once at the top): `ws/0`, `ws1/0`,
+`lexeme/1,2`, `symbol/1,2`, `whitespaced/1,2`. Each takes an optional custom
+space consumer, which is how `LispParser` folds `;` comments into whitespace.
+
 Derived/lexical: `optional/1` [L424](lib/combinators.ex#L424), `digit`/`integer`/`digits`
 ([L426–L444](lib/combinators.ex#L426)), `many/1` [L449](lib/combinators.ex#L449),
 `many1/1` [L455](lib/combinators.ex#L455), `between/3` [L461](lib/combinators.ex#L461),
@@ -308,6 +313,10 @@ Runnable LISP with expected results in [examples/README.md](examples/README.md):
 8. **#8** — `sequence`/`choice` block macros (`Combinators.DSL`).
 9. **#9** — Operator-precedence table (`Combinators.Expr`).
 10. **#10** — Grammar module DSL (`Combinators.Grammar`, `defrule`).
+11. **#11** — Toolchain fix: bump dev deps, `import Config`, Elixir `~> 1.12`.
+12. **#12** — `lexeme`/`symbol`/`whitespaced` layer; removed manual `ws()`
+    threading from JSON/calculator/LISP/`Expr`. Fixed a pre-existing CRLF bug
+    (`"\r\n"` is one grapheme, so `one_of/1` never matched it).
 
 ---
 
@@ -326,8 +335,6 @@ Runnable LISP with expected results in [examples/README.md](examples/README.md):
   cosmetic. `label/2` is the workaround.
 
 **Candidate next steps (discussed, not built)**
-- `lexeme`/`symbol` whitespace layer to kill the manual `ws()` threading in
-  LISP/JSON/calculator grammars.
 - Error **recovery** (skip to a sync token, collect multiple errors).
 - Generalise combinators over **token streams** (two-phase lexer→parser).
 - Packrat memoisation for *all* combinators (not just `rule/2`).

@@ -30,7 +30,7 @@ defmodule Combinators.Expr do
   """
 
   import Combinators
-  import Combinators.Builtin, only: [one_of: 1, chainl1: 2, chainr1: 2]
+  import Combinators.Builtin, only: [chainl1: 2, chainr1: 2, symbol: 1, whitespaced: 1]
 
   @type op :: {:infixl | :infixr | :infixn | :prefix | :postfix, function}
 
@@ -62,8 +62,12 @@ defmodule Combinators.Expr do
 
   # --- internals -----------------------------------------------------------
 
+  # Operators skip whitespace on *both* sides. Trailing space is the lexeme
+  # convention; leading space is kept for the benefit of plain `term` parsers
+  # that are not themselves lexemes (a lexeme term will already have eaten it,
+  # in which case this matches empty and costs nothing).
   defp op_parser(token, fun) when is_binary(token) do
-    map(seq([ws(), str(token), ws()]), fn _ -> fun end)
+    map(whitespaced(symbol(token)), fn _ -> fun end)
   end
 
   defp op_parser(parser, fun) when is_function(parser) do
@@ -119,6 +123,4 @@ defmodule Combinators.Expr do
       ])
     end)
   end
-
-  defp ws, do: rep(one_of(" \t\n\r"), 0)
 end

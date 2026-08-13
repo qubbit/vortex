@@ -44,7 +44,9 @@ defmodule LispParser do
   """
 
   import Combinators
-  import Combinators.Builtin, only: [many: 1, one_of: 1, none_of: 1]
+  # `lexeme/2` is imported at arity 2 only: LispParser defines its own
+  # `symbol/0` (a LISP identifier), which would clash with `Builtin.symbol/1`.
+  import Combinators.Builtin, only: [many: 1, one_of: 1, none_of: 1, lexeme: 2, whitespaced: 2]
 
   @symbol_chars "abcdefghijklmnopqrstuvwxyz" <>
                   "ABCDEFGHIJKLMNOPQRSTUVWXYZ" <>
@@ -107,7 +109,7 @@ defmodule LispParser do
   # --- grammar -------------------------------------------------------------
 
   @doc false
-  def program, do: seq([many(seq([ws(), lazy(&expr/0)])), ws()], :program)
+  def program, do: whitespaced(seq([many(lazy(&expr/0))], :program), ws())
 
   @doc false
   def expr do
@@ -122,25 +124,28 @@ defmodule LispParser do
   end
 
   @doc false
-  def atom, do: alt([number(), string_lit(), boolean(), symbol()])
+  def atom, do: lex(alt([number(), string_lit(), boolean(), symbol()]))
+
+  # Local shorthand: a lexeme whose trailing "space" also swallows `;` comments.
+  defp lex(parser), do: lexeme(parser, ws())
 
   @doc false
   def list_expr do
-    seq([str("("), many(seq([ws(), lazy(&expr/0)])), ws(), str(")")], :lisp_list)
+    seq([lex(str("(")), many(lazy(&expr/0)), lex(str(")"))], :lisp_list)
   end
 
   @doc false
-  def quote_expr, do: seq([str("'"), ws(), lazy(&expr/0)], :lisp_quote)
+  def quote_expr, do: seq([lex(str("'")), lazy(&expr/0)], :lisp_quote)
 
   @doc false
-  def quasiquote_expr, do: seq([str("`"), ws(), lazy(&expr/0)], :lisp_quasiquote)
+  def quasiquote_expr, do: seq([lex(str("`")), lazy(&expr/0)], :lisp_quasiquote)
 
   # `,@` must be tried before `,` so the splicing form wins.
   @doc false
-  def unquote_splicing_expr, do: seq([str(",@"), ws(), lazy(&expr/0)], :lisp_unquote_splicing)
+  def unquote_splicing_expr, do: seq([lex(str(",@")), lazy(&expr/0)], :lisp_unquote_splicing)
 
   @doc false
-  def unquote_expr, do: seq([str(","), ws(), lazy(&expr/0)], :lisp_unquote)
+  def unquote_expr, do: seq([lex(str(",")), lazy(&expr/0)], :lisp_unquote)
 
   @doc false
   def number, do: alt([float_lit(), integer_lit()])
@@ -171,11 +176,19 @@ defmodule LispParser do
   @doc false
   def normal_char, do: none_of("\"\\")
 
+  # `\r\n` is one grapheme in Elixir, so it must be matched explicitly rather
+  # than via the `one_of/1` character set (see `Combinators.Builtin.ws/0`).
   @doc false
-  def ws, do: rep(alt([one_of(" \t\n\r"), comment()]), 0, :ws)
+  def ws, do: rep(alt([str("\r\n"), one_of(" \t\n\r"), comment()]), 0, :ws)
 
+  # The body stops at a line ending. `none_of/1` compares graphemes, and CRLF is
+  # a single grapheme that is not "\n", so it must be excluded explicitly or the
+  # comment would swallow the newline and run on into the next line.
   @doc false
-  def comment, do: seq([str(";"), rep(none_of("\n"), 0), opt(str("\n"))])
+  def comment do
+    body = rep(seq([not_followed_by(alt([str("\r\n"), str("\n")])), any()]), 0)
+    seq([str(";"), body, opt(alt([str("\r\n"), str("\n")]))])
+  end
 
   # --- parse tree -> AST ---------------------------------------------------
 
