@@ -364,7 +364,9 @@ defmodule Evaluator do
   # --- quasiquote ----------------------------------------------------------
 
   defp quasi({:unquote, form}, env, 1), do: eval_ast(form, env)
-  defp quasi({:unquote, form}, env, depth), do: [{:symbol, "unquote"}, quasi(form, env, depth - 1)]
+
+  defp quasi({:unquote, form}, env, depth),
+    do: [{:symbol, "unquote"}, quasi(form, env, depth - 1)]
 
   defp quasi({:quasiquote, form}, env, depth) do
     [{:symbol, "quasiquote"}, quasi(form, env, depth + 1)]
@@ -388,7 +390,8 @@ defmodule Evaluator do
     as_list(eval_ast(form, env)) ++ quasi_list(rest, env, 1)
   end
 
-  defp quasi_list([item | rest], env, depth), do: [quasi(item, env, depth) | quasi_list(rest, env, depth)]
+  defp quasi_list([item | rest], env, depth),
+    do: [quasi(item, env, depth) | quasi_list(rest, env, depth)]
 
   # --- environment ---------------------------------------------------------
 
@@ -454,7 +457,10 @@ defmodule Evaluator do
   defp do_render(false), do: "#f"
   defp do_render({:symbol, name}), do: name
   defp do_render([]), do: "()"
-  defp do_render(list) when is_list(list), do: "(" <> Enum.map_join(list, " ", &do_render/1) <> ")"
+
+  defp do_render(list) when is_list(list),
+    do: "(" <> Enum.map_join(list, " ", &do_render/1) <> ")"
+
   defp do_render({:builtin, name, _fun}), do: "#<procedure:#{name}>"
   defp do_render({:closure, _p, _b, _e}), do: "#<procedure>"
 
@@ -488,15 +494,19 @@ defmodule Evaluator do
       "cdr" => bi("cdr", fn [[_ | t]] -> t end),
       "cons" => bi("cons", &builtin_cons/1),
       "list" => bi("list", fn args -> args end),
-      "append" => bi("append", fn args -> Enum.reduce(args, [], fn l, acc -> acc ++ as_list(l) end) end),
+      "append" =>
+        bi("append", fn args -> Enum.reduce(args, [], fn l, acc -> acc ++ as_list(l) end) end),
       "length" => bi("length", fn [l] -> length(as_list(l)) end),
       "reverse" => bi("reverse", fn [l] -> Enum.reverse(as_list(l)) end),
       "list-ref" => bi("list-ref", &builtin_list_ref/1),
       "member" => bi("member", &builtin_member/1),
       "map" => bi("map", fn [f, l] -> Enum.map(as_list(l), &apply_fn(f, [&1])) end),
-      "filter" => bi("filter", fn [f, l] -> Enum.filter(as_list(l), &truthy?(apply_fn(f, [&1]))) end),
-      "foldl" => bi("foldl", fn [f, acc, l] -> Enum.reduce(as_list(l), acc, &apply_fn(f, [&1, &2])) end),
-      "foldr" => bi("foldr", fn [f, acc, l] -> List.foldr(as_list(l), acc, &apply_fn(f, [&1, &2])) end),
+      "filter" =>
+        bi("filter", fn [f, l] -> Enum.filter(as_list(l), &truthy?(apply_fn(f, [&1]))) end),
+      "foldl" =>
+        bi("foldl", fn [f, acc, l] -> Enum.reduce(as_list(l), acc, &apply_fn(f, [&1, &2])) end),
+      "foldr" =>
+        bi("foldr", fn [f, acc, l] -> List.foldr(as_list(l), acc, &apply_fn(f, [&1, &2])) end),
       "apply" => bi("apply", &builtin_apply/1),
       "abs" => bi("abs", fn [x] -> abs(num(x)) end),
       "min" => bi("min", fn args -> args |> Enum.map(&num/1) |> Enum.min() end),
@@ -520,7 +530,9 @@ defmodule Evaluator do
 
   defp builtin_div([]), do: raise(ArgumentError, "/: needs at least one argument")
   defp builtin_div([x]), do: divide(1, num(x))
-  defp builtin_div([x | rest]), do: Enum.reduce(rest, num(x), fn e, acc -> divide(acc, num(e)) end)
+
+  defp builtin_div([x | rest]),
+    do: Enum.reduce(rest, num(x), fn e, acc -> divide(acc, num(e)) end)
 
   defp divide(_a, 0), do: raise(ArithmeticError, message: "division by zero")
 
@@ -531,7 +543,9 @@ defmodule Evaluator do
   defp divide(a, b), do: a / b
 
   defp builtin_cons([a, b]) when is_list(b), do: [a | b]
-  defp builtin_cons([_a, b]), do: raise(ArgumentError, "cons: second argument must be a list, got #{do_render(b)}")
+
+  defp builtin_cons([_a, b]),
+    do: raise(ArgumentError, "cons: second argument must be a list, got #{do_render(b)}")
 
   defp builtin_list_ref([l, i]) do
     list = as_list(l)

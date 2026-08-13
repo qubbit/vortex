@@ -108,6 +108,9 @@ defmodule Combinators.LeftRec do
   defp memo_put(key, value), do: Process.put(@memo, Map.put(Process.get(@memo, %{}), key, value))
 
   defp seed_get(key), do: Map.get(Process.get(@seeds, %{}), key)
-  defp seed_put(key, value), do: Process.put(@seeds, Map.put(Process.get(@seeds, %{}), key, value))
+
+  defp seed_put(key, value),
+    do: Process.put(@seeds, Map.put(Process.get(@seeds, %{}), key, value))
+
   defp seed_delete(key), do: Process.put(@seeds, Map.delete(Process.get(@seeds, %{}), key))
 end

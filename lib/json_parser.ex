@@ -56,10 +56,26 @@ defmodule JsonParser do
 
   # --- grammar -------------------------------------------------------------
 
-  @value_labels [:json_object, :json_array, :json_string, :json_number, :json_true, :json_false, :json_null]
+  @value_labels [
+    :json_object,
+    :json_array,
+    :json_string,
+    :json_number,
+    :json_true,
+    :json_false,
+    :json_null
+  ]
 
   defp value do
-    alt([object(), array(), string_lit(), number(), keyword("true", :json_true), keyword("false", :json_false), keyword("null", :json_null)])
+    alt([
+      object(),
+      array(),
+      string_lit(),
+      number(),
+      keyword("true", :json_true),
+      keyword("false", :json_false),
+      keyword("null", :json_null)
+    ])
   end
 
   defp object do

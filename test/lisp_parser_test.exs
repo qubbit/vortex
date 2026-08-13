@@ -89,7 +89,15 @@ defmodule LispParserTest do
     end
 
     test "parses a nested list" do
-      assert {:ok, [{:list, [{:symbol, "+"}, {:number, 1}, {:list, [{:symbol, "*"}, {:number, 2}, {:number, 3}]}]}]} =
+      assert {:ok,
+              [
+                {:list,
+                 [
+                   {:symbol, "+"},
+                   {:number, 1},
+                   {:list, [{:symbol, "*"}, {:number, 2}, {:number, 3}]}
+                 ]}
+              ]} =
                LispParser.parse("(+ 1 (* 2 3))")
     end
 

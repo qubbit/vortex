@@ -66,14 +66,26 @@ defmodule Combinators.Failure do
   The `:expected` list is de-duplicated and in the order the expectations were
   first seen.
   """
-  @spec deepest() :: %{offset: non_neg_integer, line: pos_integer, column: non_neg_integer, expected: [binary]} | nil
+  @spec deepest() ::
+          %{
+            offset: non_neg_integer,
+            line: pos_integer,
+            column: non_neg_integer,
+            expected: [binary]
+          }
+          | nil
   def deepest do
     case Process.get(@key) do
       nil ->
         nil
 
       {offset, line, column, expecteds} ->
-        %{offset: offset, line: line, column: column, expected: expecteds |> Enum.reverse() |> Enum.uniq()}
+        %{
+          offset: offset,
+          line: line,
+          column: column,
+          expected: expecteds |> Enum.reverse() |> Enum.uniq()
+        }
     end
   end
 end
