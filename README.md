@@ -151,6 +151,32 @@ Results are memoised per `{rule, position}` within a run, so `rule/2` also
 gives packrat performance to any named rule, recursive or not. See
 `Combinators.LeftRec` for details.
 
+### Grammar modules
+
+`use Combinators.Grammar` and declare rules with `defrule` to skip the
+`rule(:name, fn -> … end)` boilerplate. Rules refer to each other — and
+themselves, even left-recursively — just by calling their generated functions;
+no `lazy/1` needed:
+
+```elixir
+defmodule Arith do
+  use Combinators.Grammar
+  import Combinators
+  import Combinators.Builtin
+
+  defrule :expr do
+    alt([
+      seq([expr(), str("+"), term()]) ~> fn [_, a, _, b] -> a + b end,
+      term()
+    ])
+  end
+
+  defrule :term, do: text(rep(char("0-9"), 1)) ~> &String.to_integer/1
+end
+
+Parser.parse("1+2+3", Arith.expr())   #=> {:ok, 6}
+```
+
 ### Error messages
 
 When a parse fails, `Parser.parse/2` reports the furthest position it reached
