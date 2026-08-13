@@ -250,6 +250,18 @@ defmodule Combinators do
   end
 
   @doc """
+  Define a named, packrat-memoised grammar rule that may be **left-recursive**.
+  See `Combinators.LeftRec` for the full story. Delegates to
+  `Combinators.LeftRec.rule/2` so it is available wherever `Combinators` is
+  imported.
+
+      def add do
+        rule(:add, fn -> alt([seq([add(), str("+"), num()]), num()]) end)
+      end
+  """
+  defdelegate rule(name, builder), to: Combinators.LeftRec
+
+  @doc """
   Transform the node produced by `parser` with `fun`. When `parser` fails the
   failure is propagated unchanged, otherwise `fun` is applied to the node and
   the same `new_state` is returned.

@@ -30,6 +30,7 @@ defmodule Parser do
           {:ok, [any]} | {:error, binary}
   def parse(string, grammar) when is_binary(string) do
     Combinators.Failure.reset()
+    Combinators.LeftRec.reset()
     state = State.new(string)
 
     case grammar.(state) do
