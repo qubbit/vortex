@@ -3,13 +3,9 @@ defmodule Calculator do
   A small arithmetic expression evaluator built from the Vortex combinators.
 
   It parses and evaluates in one pass by having each combinator yield a *value*
-  rather than a parse-tree node, wiring the operators together with
-  `Combinators.Builtin.chainl1/2` so precedence and left-associativity come out
-  right:
-
-      expr   = term   (("+" | "-") term)*
-      term   = factor (("*" | "/") factor)*
-      factor = number | "(" expr ")" | "-" factor
+  rather than a parse-tree node. Precedence and associativity are declared as an
+  operator table and wired up by `Combinators.Expr.expression/2`; the atom is a
+  number or a parenthesised expression.
 
   Supports `+ - * /`, parentheses, unary minus, integer and decimal literals,
   and arbitrary surrounding whitespace. Division yields an integer when it
@@ -31,8 +27,9 @@ defmodule Calculator do
   """
 
   import Combinators
-  import Combinators.Builtin, only: [chainl1: 2, one_of: 1, "~>": 2]
+  import Combinators.Builtin, only: [one_of: 1, "~>": 2]
   import Combinators.DSL
+  import Combinators.Expr
 
   @doc """
   Parse and evaluate `source`, returning `{:ok, number}` or `{:error, reason}`.
@@ -60,16 +57,23 @@ defmodule Calculator do
     end
   end
 
-  defp expr, do: chainl1(lazy(&term/0), add_op())
+  # The whole precedence structure is declared as a table, tightest first.
+  defp expr, do: expression(atom(), operator_table())
 
-  defp term, do: chainl1(lazy(&factor/0), mul_op())
+  defp operator_table do
+    [
+      [prefix("-", &(-&1))],
+      [infixl("*", &*/2), infixl("/", &divide/2)],
+      [infixl("+", &+/2), infixl("-", &-/2)]
+    ]
+  end
 
-  # Written with the `choice`/`sequence` block macros.
-  defp factor do
+  # An atom is a number or a parenthesised expression, written with the
+  # `choice`/`sequence` block macros.
+  defp atom do
     choice do
       number()
       parenthesised()
-      negated()
     end
   end
 
@@ -84,38 +88,9 @@ defmodule Calculator do
     end
   end
 
-  defp negated do
-    sequence do
-      _ <- str("-")
-      _ <- ws()
-      value <- lazy(&factor/0)
-      return -value
-    end
-  end
-
-  defp add_op do
-    alt([
-      operator("+", &+/2),
-      operator("-", &-/2)
-    ])
-  end
-
-  defp mul_op do
-    alt([
-      operator("*", &*/2),
-      operator("/", &divide/2)
-    ])
-  end
-
-  # An operator parser yields the combining function, discarding surrounding
-  # whitespace and the operator token itself.
-  defp operator(token, fun) do
-    map(seq([ws(), str(token), ws()]), fn _ -> fun end)
-  end
-
   # Written with the `~>` (map) operator and given a friendly label for errors.
   defp number do
-    raw = seq([opt(one_of("+-")), digits(), opt(seq([str("."), digits()]))])
+    raw = seq([digits(), opt(seq([str("."), digits()]))])
     label(text(raw) ~> (&to_number/1), "a number")
   end
 
