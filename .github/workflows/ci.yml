@@ -1,0 +1,81 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+# Cancel superseded runs on the same branch/PR.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: test (elixir ${{ matrix.elixir }} / otp ${{ matrix.otp }})
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # The oldest version mix.exs claims to support (`elixir: "~> 1.12"`).
+          # The library uses `1..n//1` step syntax and `Integer.pow/2`, both of
+          # which landed in 1.12, so this pair is the real floor.
+          - elixir: "1.12.3"
+            otp: "24.3"
+          # A middle version, to catch breakage between the floor and current.
+          - elixir: "1.15.7"
+            otp: "26.2"
+          # What development currently happens on (see .tool-versions).
+          - elixir: "1.19.0"
+            otp: "28.1"
+            check_format: true
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Elixir
+        uses: erlef/setup-beam@v1
+        with:
+          elixir-version: ${{ matrix.elixir }}
+          otp-version: ${{ matrix.otp }}
+
+      - name: Restore dependency and build cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            deps
+            _build
+          key: ${{ runner.os }}-mix-${{ matrix.otp }}-${{ matrix.elixir }}-${{ hashFiles('**/mix.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-mix-${{ matrix.otp }}-${{ matrix.elixir }}-
+
+      - name: Install dependencies
+        run: mix deps.get
+
+      - name: Compile
+        run: mix compile
+
+      - name: Run tests
+        run: mix test
+
+      # The LISP examples are part of the deliverable and have documented
+      # expected output, so run them end-to-end rather than trusting the suite
+      # alone. Any non-zero exit or crash fails the build.
+      - name: Run example programs
+        run: |
+          for file in examples/*.lisp; do
+            echo "--- $file"
+            mix lisp "$file"
+          done
+
+      # Only checked on the newest version: formatter output differs between
+      # Elixir releases, so pinning it to one version avoids spurious failures.
+      - name: Check formatting
+        if: matrix.check_format
+        run: mix format --check-formatted

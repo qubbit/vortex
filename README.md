@@ -1,5 +1,7 @@
 # <img src="artifacts/logo.png" width="32"> Vortex
 
+[![CI](https://github.com/qubbit/vortex/actions/workflows/ci.yml/badge.svg)](https://github.com/qubbit/vortex/actions/workflows/ci.yml)
+
 A small parser combinator library for Elixir, plus a LISP parser and evaluator
 built on top of it.
 
