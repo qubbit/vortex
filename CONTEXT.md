@@ -276,6 +276,8 @@ Parses **and** evaluates in one pass. The precedence structure is a single
 | [operators_test.exs](test/operators_test.exs) | `<\|>` `~>` `~>>` `<<~`, `label`, `keep_*`, `optional` |
 | [performance_test.exs](test/performance_test.exs) | 20k-element linear-time guards |
 | [left_recursion_test.exs](test/left_recursion_test.exs) | **left-recursive** grammars: `sum`, `expr/term/factor`, node nesting, memo reset |
+| [indirect_left_recursion_test.exs](test/indirect_left_recursion_test.exs) | **indirect** cycles: termination, base case, measured growth limits |
+| [lexeme_test.exs](test/lexeme_test.exs) | `ws`/`ws1`/`lexeme`/`symbol`/`whitespaced`, CRLF handling |
 | [dsl_test.exs](test/dsl_test.exs) | `sequence`/`choice` macros |
 | [expr_test.exs](test/expr_test.exs) | precedence table: L/R/non-assoc, prefix/postfix |
 | [grammar_test.exs](test/grammar_test.exs) | `defrule` grammar (also left-recursive) |
@@ -317,14 +319,21 @@ Runnable LISP with expected results in [examples/README.md](examples/README.md):
 12. **#12** — `lexeme`/`symbol`/`whitespaced` layer; removed manual `ws()`
     threading from JSON/calculator/LISP/`Expr`. Fixed a pre-existing CRLF bug
     (`"\r\n"` is one grapheme, so `one_of/1` never matched it).
+13. **#13** — Tests pinning indirect left-recursion behaviour.
 
 ---
 
 ## Known limitations & next ideas
 
 **Limitations / gaps**
-- **Indirect** left recursion isn't grown (only direct). It terminates safely
-  but there's **no test** pinning that down — worth adding.
+- **Indirect** left recursion isn't grown (only direct), now pinned down by
+  [test/indirect_left_recursion_test.exs](test/indirect_left_recursion_test.exs).
+  Measured behaviour: every cycle **terminates** and never returns a wrong
+  answer (ungrowable input is `{:error, _}`, not a silent partial parse). An
+  *alias* cycle (`a -> b -> a`, where `b` consumes nothing) never grows past the
+  base case; a *mutual* cycle where both rules consume (`x -> y -> x`) grows
+  exactly **one** level, then stops; a three-rule cycle doesn't grow. Those
+  limits are asserted, so adding indirect support is a visible change.
 - There are now **two idioms** for expression grammars: left-recursive `rule/2`
   and the `chainl1`/`expression` table. Both are tested and correct; if you want
   one blessed way, that's a cleanup decision.

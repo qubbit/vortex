@@ -26,8 +26,13 @@ defmodule Combinators.LeftRec do
         end)
       end
 
-  Only *direct* left recursion is grown. Indirect cycles terminate safely (the
-  in-progress seed breaks the loop) but may not grow to completion.
+  Only *direct* left recursion is grown. Indirect cycles (`a -> b -> a`)
+  terminate safely — the in-progress seed breaks the loop — and never return a
+  wrong answer: an input that cannot be grown fully comes back as an error
+  rather than a silently partial parse. They are not grown to completion,
+  though. An alias cycle whose intermediate rule consumes nothing never gets
+  past the base case, and a mutual cycle where both rules consume grows exactly
+  one level. See `test/indirect_left_recursion_test.exs`, which pins this down.
 
   The per-run memo/seed tables live in the process dictionary and are cleared by
   `Parser.parse/2`; call `reset/0` yourself if you drive a `rule/2` parser
