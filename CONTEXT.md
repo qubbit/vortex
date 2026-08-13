@@ -23,7 +23,12 @@ mix test                 # full suite
 mix run bench/bench.exs   # combinator benchmarks (or: elixir bench/bench.exs)
 mix lisp FILE.lisp        # evaluate a LISP file
 mix lisp                  # LISP REPL
+mix format --check-formatted   # enforced by CI
 ```
+
+CI ([.github/workflows/ci.yml](.github/workflows/ci.yml)) runs the suite on an
+Elixir 1.12 / 1.15 / 1.19 matrix, executes every `examples/*.lisp`, and checks
+formatting (on 1.19 only — formatter output varies by release).
 
 > **Dev-deps.** `mix.exs` declares dev/test-only tooling (`ex_doc`, `dialyxir`,
 > `credo`); none are needed to compile or test the library itself. The versions
@@ -320,6 +325,8 @@ Runnable LISP with expected results in [examples/README.md](examples/README.md):
     threading from JSON/calculator/LISP/`Expr`. Fixed a pre-existing CRLF bug
     (`"\r\n"` is one grapheme, so `one_of/1` never matched it).
 13. **#13** — Tests pinning indirect left-recursion behaviour.
+14. **#14** — GitHub Actions CI (Elixir 1.12/1.15/1.19 matrix) + `mix format`
+    pass over the repo.
 
 ---
 

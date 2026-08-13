@@ -176,7 +176,7 @@ defmodule EvaluatorTest do
 
   describe "recursion" do
     test "factorial" do
-      assert 3628800 = eval!("(define (f n) (if (= n 0) 1 (* n (f (- n 1))))) (f 10)")
+      assert 3_628_800 = eval!("(define (f n) (if (= n 0) 1 (* n (f (- n 1))))) (f 10)")
     end
 
     test "tree-recursive fibonacci" do

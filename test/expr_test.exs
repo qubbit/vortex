@@ -12,13 +12,14 @@ defmodule ExprTest do
   defp atom do
     choice do
       num()
+
       sequence do
         _ <- str("(")
         _ <- spaces()
         v <- lazy(&full/0)
         _ <- spaces()
         _ <- str(")")
-        return v
+        return(v)
       end
     end
   end

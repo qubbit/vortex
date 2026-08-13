@@ -27,7 +27,7 @@ defmodule Calculator do
   """
 
   import Combinators
-  import Combinators.Builtin, only: ["~>": 2, lexeme: 1, symbol: 1, whitespaced: 1]
+  import Combinators.Builtin, only: [~>: 2, lexeme: 1, symbol: 1, whitespaced: 1]
   import Combinators.DSL
   import Combinators.Expr
 
@@ -82,7 +82,7 @@ defmodule Calculator do
       _ <- symbol("(")
       value <- lazy(&expr/0)
       _ <- symbol(")")
-      return value
+      return(value)
     end
   end
 

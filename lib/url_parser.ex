@@ -12,14 +12,15 @@ defmodule UrlParser do
   def login, do: seq([user(), str(":"), password(), str("@")], "login")
   def hostname, do: string()
   def host_number, do: seq([digits(), str("."), digits(), str("."), digits(), str("."), digits()])
+
   def host do
     seq([
       opt(str("/")),
       hostname() <|> host_number()
     ])
   end
-  def scheme, do: string()
 
+  def scheme, do: string()
 
   def uri_grammar do
     seq([

@@ -14,7 +14,7 @@ defmodule DSLTest do
           k <- ident()
           _ <- str(":")
           v <- ident()
-          return {k, v}
+          return({k, v})
         end
 
       assert {:ok, {"foo", "bar"}} = Parser.parse("foo:bar", pair)
@@ -26,7 +26,7 @@ defmodule DSLTest do
           str("(")
           n <- number()
           str(")")
-          return n
+          return(n)
         end
 
       assert {:ok, 42} = Parser.parse("(42)", p)
@@ -38,7 +38,7 @@ defmodule DSLTest do
           _ <- str("[")
           n <- number()
           _ <- str("]")
-          return n
+          return(n)
         end
 
       assert {:error, reason} = Parser.parse("[42)", p)
@@ -50,7 +50,7 @@ defmodule DSLTest do
       p =
         sequence do
           [_seq, [_, a], [_, b]] <- seq([char("0-9"), char("0-9")])
-          return a <> b
+          return(a <> b)
         end
 
       assert {:ok, "12"} = Parser.parse("12", p)
@@ -59,7 +59,7 @@ defmodule DSLTest do
     test "a single trailing parser works with no binds" do
       p =
         sequence do
-          return 99
+          return(99)
         end
 
       assert {:ok, 99} = Parser.parse("", p)
@@ -107,11 +107,12 @@ defmodule DSLTest do
     defp term do
       choice do
         number()
+
         sequence do
           _ <- str("(")
           t <- lazy(&term/0)
           _ <- str(")")
-          return t
+          return(t)
         end
       end
     end
