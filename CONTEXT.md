@@ -10,7 +10,7 @@ error-reporting system, linear-time parsing, Parsec-style operators, left
 recursion, and several DSLs.
 
 - **Tests:** 255 tests + 14 doctests, all passing.
-- **Elixir:** `~> 1.6` (developed/tested on 1.14, OTP 25). No runtime deps.
+- **Elixir:** `~> 1.12` (developed/tested on 1.19, OTP 28). No runtime deps.
 - **Layout:** `lib/` (source), `test/` (ExUnit), `examples/` (runnable LISP),
   `bench/` (perf script).
 
@@ -25,13 +25,11 @@ mix lisp FILE.lisp        # evaluate a LISP file
 mix lisp                  # LISP REPL
 ```
 
-> **⚠️ Dev-deps / offline caveat.** `mix.exs` declares dev/test-only tooling
-> (`ex_doc`, `dialyxir`, `credo`). In the sandbox used to build this, Hex could
-> not reach the network, so the suite was run with those deps **temporarily
-> stripped** from `mix.exs` (they aren't needed to compile or test the library
-> itself). `mix.exs` on `master` is unchanged and correct; in an environment
-> with Hex access, plain `mix test` just works. The throwaway helper used during
-> development copied `mix.exs`, blanked `deps`, ran `mix test`, and restored it.
+> **Dev-deps.** `mix.exs` declares dev/test-only tooling (`ex_doc`, `dialyxir`,
+> `credo`); none are needed to compile or test the library itself. The versions
+> were pinned to 2019 releases that no longer compile on modern Elixir (`credo
+> 1.0.4` fails with a `Regex.CompileError` on 1.19), so they were bumped to
+> current majors. `mix deps.get && mix test` now works from a clean clone.
 
 ---
 

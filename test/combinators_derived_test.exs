@@ -12,7 +12,7 @@ defmodule CombinatorsDerivedTest do
   # `nil` so assertions can talk about what was consumed.
   defp run(parser, string) do
     case parser.(State.new(string)) do
-      {nodes, state} -> {nodes, String.slice(state.string, state.offset..-1)}
+      {nodes, state} -> {nodes, state.rest}
       nil -> nil
     end
   end
