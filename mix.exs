@@ -10,7 +10,7 @@ defmodule Vortex.MixProject do
       description: "A parser combinator library for Elixir",
       package: package(),
       version: "0.1.0",
-      elixir: "~> 1.6",
+      elixir: "~> 1.12",
       start_permanent: Mix.env() == :prod,
       deps: deps()
     ]
@@ -26,9 +26,9 @@ defmodule Vortex.MixProject do
   # Run "mix help deps" to learn about dependencies.
   defp deps do
     [
-      {:ex_doc, ">= 0.19.1", only: [:dev], runtime: false},
-      {:dialyxir, "~> 1.0.0-rc.6", only: [:dev], runtime: false},
-      {:credo, "~> 1.0.0", only: [:dev, :test], runtime: false}
+      {:ex_doc, "~> 0.40", only: [:dev], runtime: false},
+      {:dialyxir, "~> 1.4", only: [:dev], runtime: false},
+      {:credo, "~> 1.7", only: [:dev, :test], runtime: false}
     ]
   end
 
