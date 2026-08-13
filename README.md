@@ -104,6 +104,37 @@ tokens, so those live as the functions above. The four operators that do exist
 share one precedence level and are left-associative, so `a <\|> b ~> f` means
 `(a <\|> b) ~> f` — parenthesise when you mean otherwise.
 
+### Whitespace
+
+Threading a `ws()` parser through every rule by hand is noisy and easy to get
+wrong. Instead, follow the usual lexeme convention: **every token consumes the
+whitespace after itself**, so the grammar only has to skip leading space once,
+at the very top.
+
+```elixir
+import Combinators
+import Combinators.Builtin
+
+element = lexeme(rep(char("0-9"), 1))     # a token: eats trailing space
+list    = seq([symbol("["), sep_by(element, symbol(",")), symbol("]")])
+
+Parser.parse("[ 1 , 2 ,3 ]", whitespaced(list))   #=> {:ok, [...]}
+Parser.parse("[1,2,3]",      whitespaced(list))   #=> {:ok, [...]}
+```
+
+- `lexeme(p)` — run `p`, then skip trailing whitespace.
+- `symbol("{")` — shorthand for `lexeme(str("{"))`, for punctuation/keywords.
+- `whitespaced(p)` — skip leading whitespace before `p`; use once at the top.
+- `ws/0` and `ws1/0` — the space consumers themselves (zero-or-more / one-or-more).
+
+Each takes an optional second argument: a custom space consumer. That is how
+`lib/lisp_parser.ex` treats `;` comments as whitespace:
+
+```elixir
+space = rep(alt([one_of(" \t\n\r"), comment()]), 0)
+lexeme(str("("), space)
+```
+
 ### Expression grammars
 
 `Combinators.Expr.expression/2` builds an expression parser from an operator

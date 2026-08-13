@@ -26,14 +26,16 @@ defmodule JsonParser do
   """
 
   import Combinators
-  import Combinators.Builtin, only: [one_of: 1, none_of: 1, many: 1, sep_by: 2]
+
+  import Combinators.Builtin,
+    only: [one_of: 1, none_of: 1, many: 1, sep_by: 2, lexeme: 1, symbol: 1, whitespaced: 1]
 
   @doc """
   Parse a JSON document, returning `{:ok, value}` or `{:error, reason}`.
   """
   @spec parse(binary) :: {:ok, term} | {:error, binary}
   def parse(source) when is_binary(source) do
-    grammar = seq([ws(), lazy(&value/0), ws(), eof()], :json)
+    grammar = whitespaced(seq([lazy(&value/0), eof()], :json))
 
     case Parser.parse(source, grammar) do
       {:ok, tree} -> {:ok, to_value(find_value(tree))}
@@ -62,22 +64,22 @@ defmodule JsonParser do
 
   defp object do
     seq(
-      [str("{"), ws(), sep_by(member(), seq([ws(), str(","), ws()])), ws(), str("}")],
+      [symbol("{"), sep_by(member(), symbol(",")), symbol("}")],
       :json_object
     )
   end
 
-  defp member, do: seq([string_lit(), ws(), str(":"), ws(), lazy(&value/0)], :json_member)
+  defp member, do: seq([string_lit(), symbol(":"), lazy(&value/0)], :json_member)
 
   defp array do
     seq(
-      [str("["), ws(), sep_by(lazy(&value/0), seq([ws(), str(","), ws()])), ws(), str("]")],
+      [symbol("["), sep_by(lazy(&value/0), symbol(",")), symbol("]")],
       :json_array
     )
   end
 
   defp string_lit do
-    seq([str("\""), many(alt([escape(), normal_char()])), str("\"")], :json_string)
+    lexeme(seq([str("\""), many(alt([escape(), normal_char()])), str("\"")], :json_string))
   end
 
   defp escape, do: seq([str("\\"), any()])
@@ -85,9 +87,11 @@ defmodule JsonParser do
   defp normal_char, do: none_of("\"\\")
 
   defp number do
-    seq(
-      [opt(str("-")), int_part(), opt(frac_part()), opt(exp_part())],
-      :json_number
+    lexeme(
+      seq(
+        [opt(str("-")), int_part(), opt(frac_part()), opt(exp_part())],
+        :json_number
+      )
     )
   end
 
@@ -101,9 +105,7 @@ defmodule JsonParser do
 
   defp digits1, do: rep(char("0-9"), 1)
 
-  defp keyword(word, label), do: str(word, label)
-
-  defp ws, do: rep(one_of(" \t\n\r"), 0)
+  defp keyword(word, label), do: lexeme(str(word, label))
 
   # --- parse tree -> Elixir value -----------------------------------------
 

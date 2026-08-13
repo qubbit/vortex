@@ -441,7 +441,75 @@ defmodule Combinators.Builtin do
 
   def digits, do: rep(digit(), 1)
 
-  def ws, do: rep(char("\R"), 1)
+  @default_space_chars " \t\n\r"
+
+  # A single whitespace character. `\r\n` is matched explicitly first: Elixir
+  # treats CRLF as one *grapheme*, so `State.peek/2` hands back "\r\n" as a unit
+  # and a `one_of/1` character-set test would not recognise it.
+  defp space_char, do: alt([str("\r\n"), one_of(@default_space_chars)])
+
+  @doc """
+  Match zero or more whitespace characters (space, tab, CR, LF, CRLF).
+
+  This is the default "space consumer" used by `lexeme/1` and `symbol/1`. It
+  always succeeds, so it is safe to run anywhere.
+  """
+  def ws, do: rep(space_char(), 0)
+
+  @doc """
+  Match one or more whitespace characters. Fails if there is no space at all.
+  """
+  def ws1, do: rep(space_char(), 1)
+
+  @doc """
+  Turn `parser` into a **lexeme**: run it, then silently consume any trailing
+  whitespace. The lexeme's own result is passed through untouched.
+
+  This is the standard way to avoid threading `ws()` by hand through a grammar.
+  The convention is that every token consumes the space *after* itself, so a
+  grammar only needs to skip leading whitespace once — see `whitespaced/2`.
+
+      iex> import Combinators
+      iex> import Combinators.Builtin
+      iex> p = seq([lexeme(str("a")), str("b")])
+      iex> match?({_, %State{rest: ""}}, p.(State.new("a   b")))
+      true
+
+  Pass `space` to use a different space consumer — for example a parser that
+  also skips comments:
+
+      lexeme(str("("), ws_and_comments())
+  """
+  def lexeme(parser, space \\ nil) when is_function(parser) do
+    keep_left(parser, space || ws())
+  end
+
+  @doc """
+  Match the literal `token`, then consume trailing whitespace.
+
+  Shorthand for `lexeme(str(token))`, and the usual way to write punctuation
+  and keywords in a whitespace-insensitive grammar.
+
+      iex> import Combinators.Builtin
+      iex> p = symbol("{")
+      iex> match?({_, %State{rest: ""}}, p.(State.new("{  ")))
+      true
+  """
+  def symbol(token, space \\ nil) when is_binary(token) do
+    lexeme(str(token), space)
+  end
+
+  @doc """
+  Wrap a whole grammar so leading whitespace is skipped before `parser` runs.
+
+  Lexemes consume trailing space, which leaves only the very start of the input
+  unhandled; this closes that gap. Use it once, at the top level.
+
+      def parse(source), do: Parser.parse(source, whitespaced(value()))
+  """
+  def whitespaced(parser, space \\ nil) when is_function(parser) do
+    keep_right(space || ws(), parser)
+  end
 
   @doc """
   Match `parser` zero or more times, greedily. Always succeeds.

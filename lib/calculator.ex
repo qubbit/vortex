@@ -27,7 +27,7 @@ defmodule Calculator do
   """
 
   import Combinators
-  import Combinators.Builtin, only: [one_of: 1, "~>": 2]
+  import Combinators.Builtin, only: ["~>": 2, lexeme: 1, symbol: 1, whitespaced: 1]
   import Combinators.DSL
   import Combinators.Expr
 
@@ -36,7 +36,7 @@ defmodule Calculator do
   """
   @spec eval(binary) :: {:ok, number} | {:error, binary}
   def eval(source) when is_binary(source) do
-    grammar = map(seq([ws(), expr(), ws(), eof()]), fn [_seq, _ws, value, _ws2, _eof] -> value end)
+    grammar = whitespaced(map(seq([expr(), eof()]), fn [_seq, value, _eof] -> value end))
 
     case Parser.parse(source, grammar) do
       {:ok, value} -> {:ok, value}
@@ -79,11 +79,9 @@ defmodule Calculator do
 
   defp parenthesised do
     sequence do
-      _ <- str("(")
-      _ <- ws()
+      _ <- symbol("(")
       value <- lazy(&expr/0)
-      _ <- ws()
-      _ <- str(")")
+      _ <- symbol(")")
       return value
     end
   end
@@ -91,12 +89,10 @@ defmodule Calculator do
   # Written with the `~>` (map) operator and given a friendly label for errors.
   defp number do
     raw = seq([digits(), opt(seq([str("."), digits()]))])
-    label(text(raw) ~> (&to_number/1), "a number")
+    lexeme(label(text(raw) ~> (&to_number/1), "a number"))
   end
 
   defp digits, do: rep(char("0-9"), 1)
-
-  defp ws, do: rep(one_of(" \t\n\r"), 0)
 
   defp to_number(text) do
     text = String.replace_prefix(text, "+", "")
