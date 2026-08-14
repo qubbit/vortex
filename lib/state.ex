@@ -32,26 +32,61 @@ defmodule State do
   Return up to the next `n` graphemes without consuming them.
   """
   def peek(%State{rest: rest}, n) do
-    String.slice(rest, 0, n)
+    take_bytes(rest, n, 0)
   end
 
   @doc """
   Advance past the next `n` graphemes, updating the offset, line and column.
   """
   def read(%State{rest: rest, offset: o, line: l, column: c} = state, n) do
-    consumed = String.slice(rest, 0, n)
-    consumed_bytes = byte_size(consumed)
+    consumed_bytes = grapheme_bytes(rest, n, 0)
+    consumed = binary_part(rest, 0, consumed_bytes)
     new_rest = binary_part(rest, consumed_bytes, byte_size(rest) - consumed_bytes)
 
-    lines = String.split(consumed, ~r/\R/)
-    line_count = Enum.count(lines) - 1
-    column_count = lines |> List.last() |> String.length()
+    {line_count, column_count} = count_lines(consumed, 0, 0)
 
     # A newline resets the column to the width of the trailing segment;
     # otherwise the consumed width is added to the current column.
     new_column = if line_count > 0, do: column_count, else: c + column_count
 
     %{state | rest: new_rest, offset: o + n, line: l + line_count, column: new_column}
+  end
+
+  # Take `n` graphemes off the front of `binary`.
+  #
+  # `String.slice/3` is O(byte_size(binary)) because it walks the whole string
+  # to build a grapheme view, which made every read cost time proportional to
+  # the *remaining* input and the overall parse quadratic. Walking exactly `n`
+  # graphemes with `String.next_grapheme/1` is O(n) instead.
+  defp take_bytes(binary, n, _acc) do
+    binary_part(binary, 0, grapheme_bytes(binary, n, 0))
+  end
+
+  # Byte length of the first `n` graphemes of `binary` (or all of it if it has
+  # fewer than `n`).
+  defp grapheme_bytes(_binary, 0, acc), do: acc
+
+  defp grapheme_bytes(binary, n, acc) do
+    case String.next_grapheme(binary) do
+      nil -> acc
+      {g, rest} -> grapheme_bytes(rest, n - 1, acc + byte_size(g))
+    end
+  end
+
+  # Count line breaks in `consumed` and the width of the trailing segment.
+  #
+  # Replaces `String.split(consumed, ~r/\R/)`, which compiled and ran a regex on
+  # every single read. CRLF counts as one break, matching `\R`.
+  defp count_lines(<<>>, lines, column), do: {lines, column}
+  defp count_lines(<<"\r\n", rest::binary>>, lines, _column), do: count_lines(rest, lines + 1, 0)
+  defp count_lines(<<"\n", rest::binary>>, lines, _column), do: count_lines(rest, lines + 1, 0)
+  defp count_lines(<<"\r", rest::binary>>, lines, _column), do: count_lines(rest, lines + 1, 0)
+
+  defp count_lines(binary, lines, column) do
+    case String.next_grapheme(binary) do
+      nil -> {lines, column}
+      {_g, rest} -> count_lines(rest, lines, column + 1)
+    end
   end
 
   @doc """

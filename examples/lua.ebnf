@@ -1,0 +1,97 @@
+The Complete Syntax of Lua 5.4
+==============================
+
+Verbatim from §9 of the Lua 5.4 reference manual (https://www.lua.org/manual/5.4/manual.html#9).
+Kept here as the specification `lib/lua_parser.ex` is written against.
+
+As usual in extended BNF, {A} means 0 or more As, and [A] means an optional A.
+
+	chunk ::= block
+
+	block ::= {stat} [retstat]
+
+	stat ::=  ';' |
+		 varlist '=' explist |
+		 functioncall |
+		 label |
+		 break |
+		 goto Name |
+		 do block end |
+		 while exp do block end |
+		 repeat block until exp |
+		 if exp then block {elseif exp then block} [else block] end |
+		 for Name '=' exp ',' exp [',' exp] do block end |
+		 for namelist in explist do block end |
+		 function funcname funcbody |
+		 local function Name funcbody |
+		 local attnamelist ['=' explist]
+
+	attnamelist ::=  Name attrib {',' Name attrib}
+
+	attrib ::= ['<' Name '>']
+
+	retstat ::= return [explist] [';']
+
+	label ::= '::' Name '::'
+
+	funcname ::= Name {'.' Name} [':' Name]
+
+	varlist ::= var {',' var}
+
+	var ::=  Name | prefixexp '[' exp ']' | prefixexp '.' Name
+
+	namelist ::= Name {',' Name}
+
+	explist ::= exp {',' exp}
+
+	exp ::=  nil | false | true | Numeral | LiteralString | '...' | functiondef |
+		 prefixexp | tableconstructor | exp binop exp | unop exp
+
+	prefixexp ::= var | functioncall | '(' exp ')'
+
+	functioncall ::=  prefixexp args | prefixexp ':' Name args
+
+	args ::=  '(' [explist] ')' | tableconstructor | LiteralString
+
+	functiondef ::= function funcbody
+
+	funcbody ::= '(' [parlist] ')' block end
+
+	parlist ::= namelist [',' '...'] | '...'
+
+	tableconstructor ::= '{' [fieldlist] '}'
+
+	fieldlist ::= field {fieldsep field} [fieldsep]
+
+	field ::= '[' exp ']' '=' exp | Name '=' exp | exp
+
+	fieldsep ::= ',' | ';'
+
+	binop ::=  '+' | '-' | '*' | '/' | '//' | '^' | '%' |
+		 '&' | '~' | '|' | '>>' | '<<' | '..' |
+		 '<' | '<=' | '>' | '>=' | '==' | '~=' |
+		 and | or
+
+	unop ::= '-' | not | '#' | '~'
+
+
+Operator precedence (§3.4.8), from lower to higher priority
+-----------------------------------------------------------
+
+	or
+	and
+	<     >     <=    >=    ~=    ==
+	|
+	~
+	&
+	<<    >>
+	..
+	+     -
+	*     /     //    %
+	unary operators (not   #     -     ~)
+	^
+
+`..` and `^` are right-associative; all other binary operators are
+left-associative. `^` binds tighter than unary operators on its left, so
+`-x^2` is `-(x^2)`, but the exponent itself is parsed at unary precedence, so
+`2^-3` is valid.
