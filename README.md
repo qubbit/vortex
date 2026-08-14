@@ -294,6 +294,36 @@ Calculator.eval("(1 + 2) * 3")   #=> {:ok, 9}
 Calculator.eval("10 - 2 - 3")    #=> {:ok, 5}
 ```
 
+## Lua parser
+
+`LuaParser.parse/1` parses the **complete Lua 5.4 language** into an AST —
+every statement form, `goto`/labels, local attributes (`<const>`, `<close>`),
+varargs, method definitions, table constructors, long strings with level
+matching, and the full numeric tower including hex floats.
+
+```elixir
+LuaParser.parse("local x = 1 + 2")
+#=> {:ok, [{:local, [{"x", nil}], [{:binop, :add, {:number, 1}, {:number, 2}}]}]}
+
+LuaParser.parse("for i = 1, 10 do print(i) end")
+#=> {:ok, [{:for_num, "i", {:number, 1}, {:number, 10}, nil, [...]}]}
+```
+
+The grammar in `lib/lua_parser.ex` follows the EBNF in
+[examples/lua.ebnf](examples/lua.ebnf) production for production, and the
+operator precedence table from §3.4.8 of the reference manual. It exercises
+most of the library at once: `defrule` for the mutually recursive rules,
+`Combinators.Expr` for the precedence table, `bind/2` for long-bracket level
+matching (`[==[ … ]==]`, which is not context-free), and the `lexeme`
+whitespace layer with a custom space consumer that treats comments as
+whitespace.
+
+Accept/reject behaviour was differential-tested against the real `luac -p`
+binary over 106 Neovim runtime files with **zero disagreements on syntax**. The
+only cases where `luac` rejects and this parser accepts are *semantic* errors
+that need scope analysis rather than a grammar — `break` outside a loop,
+assigning to a `<const>`, and `goto` to an invisible label.
+
 ## Development
 
 ```

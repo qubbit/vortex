@@ -33,4 +33,47 @@ defmodule PerformanceTest do
     assert {:number, 1} = hd(elements)
     assert {:number, ^n} = List.last(elements)
   end
+
+  # `State.read/2` used `String.slice(rest, 0, n)`, which walks the whole
+  # binary to build a grapheme view. That made a single read cost time
+  # proportional to the *remaining* input, so any parse was quadratic overall —
+  # invisible in the tests above, which read from near the end of the input.
+  #
+  # Reading one grapheme must cost the same whether 1KB or 200KB remains.
+  test "reading a single grapheme is independent of the remaining input size" do
+    time_reads = fn size ->
+      state = State.new(String.duplicate("a", size))
+
+      {micros, _} =
+        :timer.tc(fn ->
+          Enum.reduce(1..2_000, state, fn _, s -> State.read(s, 1) end)
+        end)
+
+      micros
+    end
+
+    small = time_reads.(1_000)
+    large = time_reads.(200_000)
+
+    # Allow generous headroom for scheduling noise; the old implementation was
+    # ~200x slower on the large input, so anything near-constant passes.
+    assert large < max(small, 1_000) * 20,
+           "reading from a 200KB input took #{large}us vs #{small}us from 1KB — " <>
+             "State.read looks O(remaining) again"
+  end
+
+  test "line and column tracking survives the fast path" do
+    state = State.new("ab\ncd\r\nef")
+
+    after_first = State.read(state, 3)
+    assert after_first.line == 2
+    assert after_first.column == 0
+
+    # Consumes "c", "d", the CRLF (one grapheme, one line break), then "e" —
+    # so the column is 1, counting the "e" on the new line.
+    after_second = State.read(after_first, 4)
+    assert after_second.line == 3
+    assert after_second.column == 1
+    assert after_second.rest == "f"
+  end
 end

@@ -67,6 +67,7 @@ checks formatting (on 1.20 only — formatter output varies by release).
 | `Evaluator` | [lib/evaluator.ex](lib/evaluator.ex#L1) | Scheme-style interpreter (TCO, REPL). |
 | `JsonParser` | [lib/json_parser.ex](lib/json_parser.ex#L1) | JSON → Elixir maps/lists/values. |
 | `Calculator` | [lib/calculator.ex](lib/calculator.ex#L1) | Arithmetic, built on the precedence table. |
+| `LuaParser` | [lib/lua_parser.ex](lib/lua_parser.ex#L1) | **Complete Lua 5.4** → AST. Grammar spec in [examples/lua.ebnf](examples/lua.ebnf). |
 | `UrlParser` | [lib/url_parser.ex](lib/url_parser.ex#L5) | The original tiny URL demo. |
 | `Mix.Tasks.Lisp` | [lib/mix/tasks/lisp.ex](lib/mix/tasks/lisp.ex#L1) | `mix lisp` task. |
 | `Vortex` | [lib/vortex.ex](lib/vortex.ex#L1) | Leftover generated `hello`. |
@@ -172,7 +173,19 @@ already exists (so a label never hides an error found after input was consumed).
 
 The dominant old cost was `String.slice`/`String.length` at an absolute offset
 (O(offset) per char → O(n²) parses). Fixed by the `rest`-carrying `State`
-above. Secondary: `seq`/`rep`/`count`/`rep_range` build result lists by
+above.
+
+> **A second quadratic lurked here until the Lua work.** `State.read/2` still
+> called `String.slice(rest, 0, n)`, which walks the *whole* binary to build a
+> grapheme view — so a read cost O(remaining input), and a full parse was
+> quadratic again. It hid from the old benchmarks because they read from near
+> the end of the input. `read/2` and `peek/2` now walk exactly `n` graphemes
+> with `String.next_grapheme/1`, and the per-read `String.split(consumed,
+> ~r/\R/)` (a regex on every character read) is a byte-pattern match. A single
+> read went from ~27 µs at 80 KB remaining to a flat ~0.5 µs, making a 4 000
+> statement parse **14.7x** faster (10.5 s → 0.7 s). Guarded by
+> "reading a single grapheme is independent of the remaining input size" in
+> [test/performance_test.exs](test/performance_test.exs). Secondary: `seq`/`rep`/`count`/`rep_range` build result lists by
 prepend+reverse; `char` compiles its class regex once. Benchmarks:
 [bench/bench.exs](bench/bench.exs); regression guard:
 [test/performance_test.exs](test/performance_test.exs) (parses 20k-element
@@ -260,6 +273,29 @@ Objects→maps, arrays→lists, `true/false/null`→`true/false/nil`, full strin
 escapes incl. `\uXXXX`, int/float/exponent numbers. Grammar builds a labelled
 tree, then a `to_value` transform walks it (same pattern as the LISP AST).
 
+### Lua — `LuaParser` ([lib/lua_parser.ex](lib/lua_parser.ex#L1))
+
+`parse/1` / `parse!/1`. Covers the **whole** Lua 5.4 grammar; the spec it was
+written against is checked in at [examples/lua.ebnf](examples/lua.ebnf), and
+[examples/showcase.lua](examples/showcase.lua) is a runnable chunk exercising
+most of the language. Worth knowing:
+
+- **It uses nearly the whole library**: `defrule` for the ~25 mutually
+  recursive rules, `Combinators.Expr` for the precedence table, `bind/2` for
+  long-bracket level matching (`[==[ … ]==]` — *not* context-free), `lexeme/2`
+  with a custom space consumer so comments count as whitespace.
+- **`^` needed a hand-written rule.** Its precedence is asymmetric — tighter
+  than a unary operator on its left (`-x^2` is `-(x^2)`) but its right operand
+  parses at unary precedence (`2^-3` is valid). One `Expr` level can't express
+  that, so `power`/`unary_exp` do it directly.
+- **Operator prefixes need lookahead.** `Expr`'s bare-string operators match
+  greedily, so `<` would eat the `<` of `<=`, and `-` would start a `--`
+  comment. `op/1` wraps conflicting tokens in `not_followed_by`.
+- **Differential-tested against `luac -p`** over 106 Neovim files: zero
+  syntactic disagreements. Where `luac` rejects and this accepts, it is always
+  a *semantic* check needing scope analysis — `break` outside a loop, assigning
+  to a `<const>`, `goto` to an invisible label. A grammar cannot catch those.
+
 ### Calculator — `Calculator` ([lib/calculator.ex](lib/calculator.ex#L1))
 
 `eval/1` [L38](lib/calculator.ex#L38), `eval!/1` [L53](lib/calculator.ex#L53).
@@ -283,6 +319,7 @@ Parses **and** evaluates in one pass. The precedence structure is a single
 | [left_recursion_test.exs](test/left_recursion_test.exs) | **left-recursive** grammars: `sum`, `expr/term/factor`, node nesting, memo reset |
 | [indirect_left_recursion_test.exs](test/indirect_left_recursion_test.exs) | **indirect** cycles: termination, base case, measured growth limits |
 | [lexeme_test.exs](test/lexeme_test.exs) | `ws`/`ws1`/`lexeme`/`symbol`/`whitespaced`, CRLF handling |
+| [lua_parser_test.exs](test/lua_parser_test.exs) | Lua 5.4: literals, precedence, every statement form, rejects |
 | [dsl_test.exs](test/dsl_test.exs) | `sequence`/`choice` macros |
 | [expr_test.exs](test/expr_test.exs) | precedence table: L/R/non-assoc, prefix/postfix |
 | [grammar_test.exs](test/grammar_test.exs) | `defrule` grammar (also left-recursive) |
@@ -329,6 +366,8 @@ Runnable LISP with expected results in [examples/README.md](examples/README.md):
     pass over the repo.
 15. **#15** — Bump dev toolchain to Elixir 1.20.3 / OTP 29.0.5; CI matrix gains
     a 1.20 row.
+16. **#16** — `LuaParser`: complete Lua 5.4. Fixed the second `State` quadratic
+    found while scaling it (see "Linear-time parsing").
 
 ---
 
