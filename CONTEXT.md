@@ -191,6 +191,34 @@ prepend+reverse; `char` compiles its class regex once. Benchmarks:
 [test/performance_test.exs](test/performance_test.exs) (parses 20k-element
 inputs that would time out under the old code).
 
+### Performance notes (measured, not assumed)
+
+Numbers from a 2 000-statement Lua parse and micro-benchmarks net of loop
+overhead. Useful mostly as a record of **what did not work**, so it isn't
+re-attempted:
+
+| Change | Result |
+| --- | --- |
+| One-pass char reads (`State.next/1`) | `char` 0.83→0.69 µs, `one_of` 0.55→0.40 µs ✅ |
+| `errors: false` | 1.33x on alt-heavy grammars, 1.04x on Lua ✅ |
+| `keyword_alt/1,2` | **6.5x** on the choice itself ✅ (but see below) |
+| One-pass `str/1` via `State.match` | 12x faster in isolation, **2x slower** on Lua ❌ |
+| Skip memoisation for non-recursive rules | memo is 5.7x *faster* on revisits ❌ |
+
+Three things worth knowing:
+
+- **`str/1` is a live puzzle.** A one-pass version is 12x faster on the failing
+  path (0.40 µs vs 4.75 µs) and produces identical results, yet a clean A/B/A
+  run reproducibly doubles Lua parse time (1075 → 2135 → 1076 ms). Micro-
+  benchmarks across literal lengths, both paths, and memo size all look right.
+  It was **not** shipped. Don't re-apply it on micro-benchmark evidence alone.
+- **`keyword_alt` barely moves Lua** despite being 6.5x faster in isolation,
+  because `stat` is memoised and so runs once per position anyway. It pays off
+  in grammars where a wide choice is re-entered.
+- **Memoisation is worth it on revisits and costs 2x on single visits.** Lua
+  spends ~19.6 µs per memo entry overall against ~0.3 µs of memo bookkeeping,
+  so the tables are not the bottleneck — the parsing is.
+
 ### Left recursion — `Combinators.LeftRec` ([lib/left_rec.ex](lib/left_rec.ex#L1))
 
 `rule/2` ([L57](lib/left_rec.ex#L57)) makes **direct** left recursion work
@@ -368,6 +396,8 @@ Runnable LISP with expected results in [examples/README.md](examples/README.md):
     a 1.20 row.
 16. **#16** — `LuaParser`: complete Lua 5.4. Fixed the second `State` quadratic
     found while scaling it (see "Linear-time parsing").
+17. **#17** — Perf: `errors: false`, one-pass character reads (`State.next/1`),
+    `keyword_alt/1,2` prefix dispatch. See "Performance notes".
 
 ---
 
