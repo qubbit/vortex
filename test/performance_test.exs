@@ -62,6 +62,39 @@ defmodule PerformanceTest do
              "State.read looks O(remaining) again"
   end
 
+  describe "State.next/1" do
+    test "returns the grapheme and the advanced state" do
+      assert {"a", state} = State.next(State.new("abc"))
+      assert state.rest == "bc"
+      assert state.offset == 1
+      assert state.column == 1
+    end
+
+    test "returns nil at the end of the input" do
+      assert State.next(State.new("")) == nil
+    end
+
+    test "treats CRLF as a single grapheme and one line break" do
+      assert {"\r\n", state} = State.next(State.new("\r\nx"))
+      assert state.line == 2
+      assert state.column == 0
+      assert state.rest == "x"
+    end
+
+    test "agrees with peek/2 plus read/2" do
+      for input <- ["abc", "\n", "\r\n", "héllo", "😀x"] do
+        state = State.new(input)
+        assert {grapheme, advanced} = State.next(state)
+        assert grapheme == State.peek(state, 1)
+        read = State.read(state, 1)
+        assert advanced.rest == read.rest
+        assert advanced.offset == read.offset
+        assert advanced.line == read.line
+        assert advanced.column == read.column
+      end
+    end
+  end
+
   test "line and column tracking survives the fast path" do
     state = State.new("ab\ncd\r\nef")
 

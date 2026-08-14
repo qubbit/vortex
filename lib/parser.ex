@@ -25,11 +25,25 @@ defmodule Parser do
     * `{:error, reason}` when the grammar fails to match, or matches only a
       prefix of the input (a partial parse). The reason points at the furthest
       position the parse reached and lists what was expected there.
+
+  ## Options
+
+    * `:errors` — when `false`, skip furthest-failure tracking. Leaf
+      combinators record nothing, and a failed parse reports a generic message
+      instead of a position and expectation set. A backtracking grammar fails
+      constantly, so this is worth it when you only need to know *whether* the
+      input parsed. Defaults to `true`.
+
+      iex> import Combinators
+      iex> Parser.parse("nope", str("hello"), errors: false)
+      {:error, "parse failed"}
   """
-  @spec parse(binary, (State.t() -> {[any], State.t()} | nil)) ::
+  @spec parse(binary, (State.t() -> {[any], State.t()} | nil), keyword) ::
           {:ok, [any]} | {:error, binary}
-  def parse(string, grammar) when is_binary(string) do
-    Combinators.Failure.reset()
+  def parse(string, grammar, opts \\ []) when is_binary(string) and is_list(opts) do
+    track_errors? = Keyword.get(opts, :errors, true)
+
+    Combinators.Failure.reset(track_errors?)
     Combinators.LeftRec.reset()
     state = State.new(string)
 
@@ -47,11 +61,15 @@ defmodule Parser do
   end
 
   defp error_message(fallback_state) do
-    case Combinators.Failure.deepest() do
-      %{line: line, column: column, expected: expected} ->
+    cond do
+      not Combinators.Failure.enabled?() ->
+        "parse failed"
+
+      deepest = Combinators.Failure.deepest() ->
+        %{line: line, column: column, expected: expected} = deepest
         "line #{line}, column #{column + 1}: expected #{Enum.join(expected, ", ")}"
 
-      nil ->
+      true ->
         "line #{fallback_state.line}, column #{fallback_state.column + 1}: unexpected input"
     end
   end

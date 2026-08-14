@@ -54,12 +54,18 @@ defmodule Combinators do
     expected = "a character in [#{pattern}]"
 
     fn state ->
-      chunk = State.peek(state, 1)
+      # One pass: take the grapheme and the advanced state together, then test.
+      # `peek` followed by `read` walked the input twice.
+      case State.next(state) do
+        {grapheme, new_state} ->
+          if Regex.match?(regex, grapheme) do
+            {[label, hd(apply_visitor([grapheme], visitor))], new_state}
+          else
+            Combinators.Failure.record(state, expected)
+          end
 
-      if chunk =~ regex do
-        {[label, hd(apply_visitor([chunk], visitor))], State.read(state, 1)}
-      else
-        Combinators.Failure.record(state, expected)
+        nil ->
+          Combinators.Failure.record(state, expected)
       end
     end
   end
@@ -71,12 +77,9 @@ defmodule Combinators do
   @spec any(label :: atom) :: (state -> {[any], state} | nil)
   def any(label \\ :any) do
     fn state ->
-      chunk = State.peek(state, 1)
-
-      if chunk != "" do
-        {[label, chunk], State.read(state, 1)}
-      else
-        Combinators.Failure.record(state, "any character")
+      case State.next(state) do
+        {grapheme, new_state} -> {[label, grapheme], new_state}
+        nil -> Combinators.Failure.record(state, "any character")
       end
     end
   end
@@ -550,13 +553,19 @@ defmodule Combinators.Builtin do
   the input or when the next character is not in the set.
   """
   def one_of(chars) when is_binary(chars) do
-    fn state ->
-      c = State.peek(state, 1)
+    expected = ~s(one of "#{chars}")
 
-      if c != "" and String.contains?(chars, c) do
-        {[:one_of, c], State.read(state, 1)}
-      else
-        Combinators.Failure.record(state, ~s(one of "#{chars}"))
+    fn state ->
+      case State.next(state) do
+        {grapheme, new_state} ->
+          if String.contains?(chars, grapheme) do
+            {[:one_of, grapheme], new_state}
+          else
+            Combinators.Failure.record(state, expected)
+          end
+
+        nil ->
+          Combinators.Failure.record(state, expected)
       end
     end
   end
@@ -566,13 +575,19 @@ defmodule Combinators.Builtin do
   of the input or when the next character is in the set.
   """
   def none_of(chars) when is_binary(chars) do
-    fn state ->
-      c = State.peek(state, 1)
+    expected = ~s(a character other than "#{chars}")
 
-      if c != "" and not String.contains?(chars, c) do
-        {[:none_of, c], State.read(state, 1)}
-      else
-        Combinators.Failure.record(state, ~s(a character other than "#{chars}"))
+    fn state ->
+      case State.next(state) do
+        {grapheme, new_state} ->
+          if String.contains?(chars, grapheme) do
+            Combinators.Failure.record(state, expected)
+          else
+            {[:none_of, grapheme], new_state}
+          end
+
+        nil ->
+          Combinators.Failure.record(state, expected)
       end
     end
   end
