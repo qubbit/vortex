@@ -90,6 +90,32 @@ defmodule State do
   end
 
   @doc """
+  Take the next grapheme and advance past it in one pass, returning
+  `{grapheme, new_state}` — or `nil` at the end of the input.
+
+  Single-character combinators (`char/1`, `one_of/1`, `none_of/1`, `any/0`) all
+  peek one grapheme, test it, then read it, which walks the input twice. This
+  does both halves once.
+  """
+  @spec next(t) :: {binary, t} | nil
+  def next(%State{rest: rest} = state) do
+    case String.next_grapheme(rest) do
+      nil ->
+        nil
+
+      {grapheme, remaining} ->
+        {grapheme, %{state | rest: remaining} |> advance_position(grapheme, 1)}
+    end
+  end
+
+  defp advance_position(%State{offset: o, line: l, column: c} = state, consumed, graphemes) do
+    {line_count, column_count} = count_lines(consumed, 0, 0)
+    new_column = if line_count > 0, do: column_count, else: c + column_count
+
+    %{state | offset: o + graphemes, line: l + line_count, column: new_column}
+  end
+
+  @doc """
   Returns true when the whole input string has been consumed.
   """
   def complete?(%State{rest: ""}), do: true

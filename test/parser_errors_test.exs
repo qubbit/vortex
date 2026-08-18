@@ -3,6 +3,39 @@ defmodule ParserErrorsTest do
   import Combinators
   import Combinators.Builtin
 
+  describe "errors: false" do
+    test "a failed parse reports a generic message" do
+      assert Parser.parse("cat", str("dog"), errors: false) == {:error, "parse failed"}
+    end
+
+    test "a successful parse is unaffected" do
+      assert Parser.parse("dog", str("dog"), errors: false) ==
+               Parser.parse("dog", str("dog"))
+    end
+
+    test "a partial parse still fails" do
+      assert {:error, "parse failed"} = Parser.parse("dogs", str("dog"), errors: false)
+    end
+
+    test "tracking is restored for the next parse in the same process" do
+      assert {:error, "parse failed"} = Parser.parse("cat", str("dog"), errors: false)
+      assert {:error, reason} = Parser.parse("cat", str("dog"))
+      assert reason == ~s(line 1, column 1: expected "dog")
+    end
+
+    test "label/2 does not re-enable tracking" do
+      # `label/2` calls `Failure.relabel/2`, which writes to the same key the
+      # disabled sentinel occupies — it must not clobber it.
+      grammar = label(str("dog"), "a dog")
+      assert {:error, "parse failed"} = Parser.parse("cat", grammar, errors: false)
+    end
+
+    test "deep failures inside alternatives do not re-enable tracking" do
+      grammar = alt([seq([str("a"), str("b")]), str("z")])
+      assert {:error, "parse failed"} = Parser.parse("ax", grammar, errors: false)
+    end
+  end
+
   describe "furthest-failure reporting" do
     test "names the expected literal at the failure position" do
       assert {:error, reason} = Parser.parse("cat", str("dog"))

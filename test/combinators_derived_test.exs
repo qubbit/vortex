@@ -91,6 +91,63 @@ defmodule CombinatorsDerivedTest do
     end
   end
 
+  describe "keyword_alt" do
+    defp keywords do
+      keyword_alt([
+        {["i"], str("if")},
+        {["w"], str("while")},
+        {["f"], str("for")},
+        {["f"], str("function")}
+      ])
+    end
+
+    test "dispatches to the alternative for the leading character" do
+      assert {[:lit_str, "if"], ""} = run(keywords(), "if")
+      assert {[:lit_str, "while"], ""} = run(keywords(), "while")
+    end
+
+    test "keeps the original order within a bucket" do
+      # `for` and `function` share the "f" bucket; both must still match.
+      assert {[:lit_str, "for"], ""} = run(keywords(), "for")
+      assert {[:lit_str, "function"], ""} = run(keywords(), "function")
+    end
+
+    test "fails when the leading character has no alternatives" do
+      assert nil == run(keywords(), "zzz")
+    end
+
+    test "fails when the bucket matches no alternative" do
+      assert nil == run(keywords(), "fizz")
+    end
+
+    test "fails on empty input" do
+      assert nil == run(keywords(), "")
+    end
+
+    test "produces the same results as the equivalent alt/1" do
+      plain = alt([str("if"), str("while"), str("for"), str("function")])
+
+      for input <- ["if", "while", "for", "function", "zzz", "fizz", ""] do
+        assert run(keywords(), input) == run(plain, input),
+               "disagreed on #{inspect(input)}"
+      end
+    end
+
+    test "fallbacks run when no character-specific alternative matches" do
+      p = keyword_alt([{["i"], str("if")}], [many1(char("0-9"))])
+      assert {[:lit_str, "if"], ""} = run(p, "if")
+      assert {_digits, ""} = run(p, "123")
+      assert nil == run(p, "zz")
+    end
+
+    test "fallbacks run after a failed bucket, not instead of it" do
+      # "i" dispatches to `if`; when that fails the fallback still gets a turn.
+      p = keyword_alt([{["i"], str("if")}], [str("igloo")])
+      assert {[:lit_str, "if"], ""} = run(p, "if")
+      assert {[:lit_str, "igloo"], ""} = run(p, "igloo")
+    end
+  end
+
   describe "between" do
     test "matches an inner parser wrapped by delimiters" do
       p = between(str("("), str(")"), many1(char("0-9")))
